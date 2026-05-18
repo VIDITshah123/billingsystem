@@ -113,8 +113,8 @@ export async function generateInvoicePDF(invoice) {
   doc.setFontSize(8.5);
   doc.setTextColor(...secondaryColor);
   
-  // Wrap and print client address cleanly
-  const clientAddrLines = doc.splitTextToSize(invoice.customer_address, 110);
+  // Wrap and print client address cleanly (limited to 75mm width so it wraps nicely)
+  const clientAddrLines = doc.splitTextToSize(invoice.customer_address, 75);
   let addrY = billY + 10.5;
   clientAddrLines.forEach(line => {
     doc.text(line, 14, addrY);
