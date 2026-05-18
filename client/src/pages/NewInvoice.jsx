@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import API from '../api';
+import { validateGST } from '../utils/gstValidator';
 
 const r2 = (n) => Math.round(n * 100) / 100;
 
@@ -59,6 +60,14 @@ export default function NewInvoice() {
     if (!form.invoice_number || !form.invoice_date || !form.customer_id) {
       toast.error('Fill invoice number, date and customer');
       return;
+    }
+    const customer = customers.find(c => c.id === parseInt(form.customer_id));
+    if (customer) {
+      const gstErr = validateGST(customer.gst_number);
+      if (gstErr) {
+        toast.error(`Selected customer has an invalid GST format: ${gstErr}`);
+        return;
+      }
     }
     const validItems = items.filter(it => it.product_id && it.quantity && it.rate);
     if (validItems.length === 0) {

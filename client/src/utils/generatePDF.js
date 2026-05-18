@@ -7,7 +7,8 @@ const COMPANY = {
   phone: '+91 9892352600',
   email: 'vidhimenterprises@gmail.com',
   gst: '27AXVPS9856J1Z4',
-  bank: 'UNION BANK OF INDIA, Bhayandar East, Jesal Park Branch',
+  bank: 'UNION BANK OF INDIA',
+  branch: 'BHAYANDAR EAST, JESAL PARK BRANCH',
   account: '510101006809654',
   ifsc: 'UBIN0904554',
 };
@@ -15,159 +16,212 @@ const COMPANY = {
 export function generateInvoicePDF(invoice) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const W = doc.internal.pageSize.getWidth();
+  
+  // Clean color scheme: Slate Gray & Dark Charcoal
+  const primaryColor = [15, 23, 42]; // Slate 900
+  const secondaryColor = [71, 85, 105]; // Slate 600
+  const lightGray = [241, 245, 249]; // Slate 100
+  const borderGray = [226, 232, 240]; // Slate 200
 
-  // Header background
-  doc.setFillColor(20, 20, 40);
-  doc.rect(0, 0, W, 42, 'F');
-
-  // Company name
-  doc.setFontSize(16);
-  doc.setTextColor(108, 99, 255);
+  // 1. Company Logo & Title Header
+  doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
-  doc.text(COMPANY.name, 14, 14);
+  doc.setTextColor(...primaryColor);
+  doc.text(COMPANY.name, 14, 16);
 
-  // Company details
-  doc.setFontSize(8);
-  doc.setTextColor(180, 180, 200);
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
-  doc.text(COMPANY.address, 14, 21);
-  doc.text(`Ph: ${COMPANY.phone}  |  ${COMPANY.email}`, 14, 29);
-  doc.text(`GST No: ${COMPANY.gst}`, 14, 35);
+  doc.setTextColor(...secondaryColor);
+  
+  // Split company address lines for clean vertical rendering
+  const companyAddr = COMPANY.address.split('\n');
+  doc.text(companyAddr[0], 14, 21.5);
+  doc.text(companyAddr[1], 14, 25.5);
+  doc.text(`Phone: ${COMPANY.phone}   |   Email: ${COMPANY.email}`, 14, 29.5);
+  doc.text(`GSTIN: ${COMPANY.gst}`, 14, 33.5);
 
-  // TAX INVOICE label
-  doc.setFontSize(11);
-  doc.setTextColor(255, 255, 255);
+  // 2. Right Aligned Tax Invoice Title
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('TAX INVOICE', W - 14, 18, { align: 'right' });
+  doc.setTextColor(...primaryColor);
+  doc.text('TAX INVOICE', W - 14, 16, { align: 'right' });
 
-  // Invoice meta box
-  doc.setFillColor(30, 33, 48);
-  doc.roundedRect(W - 70, 22, 56, 16, 2, 2, 'F');
+  // Invoice Details Block
+  doc.setFillColor(...lightGray);
+  doc.setDrawColor(...borderGray);
+  doc.roundedRect(W - 74, 21, 60, 16, 2, 2, 'FD');
+
   doc.setFontSize(8);
-  doc.setTextColor(140, 144, 176);
   doc.setFont('helvetica', 'normal');
-  doc.text('Invoice No:', W - 66, 29);
-  doc.text('Date:', W - 66, 34);
-  doc.setTextColor(232, 234, 246);
-  doc.setFont('helvetica', 'bold');
-  doc.text(invoice.invoice_number, W - 30, 29);
-  doc.text(invoice.invoice_date, W - 30, 34);
+  doc.setTextColor(...secondaryColor);
+  doc.text('Invoice No:', W - 70, 27);
+  doc.text('Date:', W - 70, 32);
 
-  // Bill To
-  const y1 = 48;
-  doc.setFontSize(8);
-  doc.setTextColor(108, 99, 255);
   doc.setFont('helvetica', 'bold');
-  doc.text('BILL TO:', 14, y1);
-  doc.setTextColor(50, 50, 50);
+  doc.setTextColor(...primaryColor);
+  doc.text(invoice.invoice_number, W - 18, 27, { align: 'right' });
+  doc.text(invoice.invoice_date, W - 18, 32, { align: 'right' });
+
+  // Horizontal divider
+  doc.setDrawColor(...borderGray);
+  doc.setLineWidth(0.3);
+  doc.line(14, 39, W - 14, 39);
+
+  // 3. Billing details block
+  const billY = 44;
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text(invoice.customer_name, 14, y1 + 6);
+  doc.setTextColor(...secondaryColor);
+  doc.text('BILL TO:', 14, billY);
+
+  doc.setFontSize(10.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...primaryColor);
+  doc.text(invoice.customer_name, 14, billY + 5.5);
+
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(80, 80, 100);
+  doc.setTextColor(...secondaryColor);
+  
+  // Wrap and print client address cleanly
+  const clientAddrLines = doc.splitTextToSize(invoice.customer_address, 110);
+  let addrY = billY + 10.5;
+  clientAddrLines.forEach(line => {
+    doc.text(line, 14, addrY);
+    addrY += 4;
+  });
 
-  // Address word-wrap
-  const addrLines = doc.splitTextToSize(invoice.customer_address, 90);
-  doc.text(addrLines, 14, y1 + 12);
-  doc.text(`GST No: ${invoice.customer_gst}`, 14, y1 + 12 + addrLines.length * 4);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...primaryColor);
+  doc.text(`GSTIN: ${invoice.customer_gst}`, 14, addrY + 1);
 
-  // Items table
-  const tableY = y1 + 30;
-  const rows = invoice.items.map((it, i) => [
-    i + 1,
+  // 4. Products Table
+  const tableStartY = addrY + 7;
+  const tableRows = invoice.items.map((it, idx) => [
+    idx + 1,
     it.product_name,
     it.hsn_code,
     `${parseFloat(it.quantity).toFixed(2)} ${it.unit}`,
-    `₹${parseFloat(it.rate).toFixed(2)}`,
-    `₹${parseFloat(it.amount).toFixed(2)}`,
+    `INR ${parseFloat(it.rate).toFixed(2)}`,
+    `INR ${parseFloat(it.amount).toFixed(2)}`,
   ]);
 
   autoTable(doc, {
-    startY: tableY,
-    head: [['#', 'Description', 'HSN', 'Qty', 'Rate', 'Amount']],
-    body: rows,
+    startY: tableStartY,
+    head: [['#', 'Product Description', 'HSN Code', 'Qty / Unit', 'Rate', 'Amount']],
+    body: tableRows,
     theme: 'grid',
-    headStyles: { fillColor: [20, 20, 40], textColor: [108, 99, 255], fontSize: 8, fontStyle: 'bold' },
-    bodyStyles: { fontSize: 8, textColor: [40, 40, 60] },
+    headStyles: { 
+      fillColor: primaryColor, 
+      textColor: [255, 255, 255], 
+      fontSize: 8, 
+      fontStyle: 'bold',
+      halign: 'left'
+    },
+    bodyStyles: { 
+      fontSize: 8, 
+      textColor: primaryColor 
+    },
     columnStyles: {
       0: { cellWidth: 8, halign: 'center' },
-      1: { cellWidth: 55 },
+      1: { cellWidth: 70 },
       2: { cellWidth: 20, halign: 'center' },
-      3: { cellWidth: 28, halign: 'right' },
+      3: { cellWidth: 25, halign: 'right' },
       4: { cellWidth: 28, halign: 'right' },
-      5: { cellWidth: 28, halign: 'right' },
+      5: { cellWidth: 31, halign: 'right' },
+    },
+    // Right align headers for numeric columns
+    didParseCell: function (data) {
+      if (data.section === 'head' && [3, 4, 5].includes(data.column.index)) {
+        data.cell.styles.halign = 'right';
+      }
     },
     margin: { left: 14, right: 14 },
+    styles: {
+      lineColor: borderGray,
+      lineWidth: 0.15
+    }
   });
 
-  const afterTable = doc.lastAutoTable.finalY + 4;
+  const finalY = doc.lastAutoTable.finalY + 6;
 
-  // Tax summary (right aligned)
-  const taxX = W - 14;
-  let ty = afterTable;
+  // 5. Calculations / Taxes Block (Right aligned, perfect width calculation)
+  const calcX = W - 14;
+  let taxY = finalY;
 
-  const taxLines = [
-    ['Taxable Value', `₹${parseFloat(invoice.taxable_value).toFixed(2)}`],
+  const summary = [
+    ['Taxable Value', `INR ${parseFloat(invoice.taxable_value).toFixed(2)}`],
     ...(invoice.tax_type === 'cgst_sgst'
-      ? [['CGST @ 2.5%', `₹${parseFloat(invoice.cgst).toFixed(2)}`], ['SGST @ 2.5%', `₹${parseFloat(invoice.sgst).toFixed(2)}`]]
-      : [['IGST @ 5%', `₹${parseFloat(invoice.igst).toFixed(2)}`]]),
-    ['Round Off', `${parseFloat(invoice.roundoff) >= 0 ? '+' : ''}₹${parseFloat(invoice.roundoff).toFixed(2)}`],
+      ? [
+          ['CGST @ 2.5%', `INR ${parseFloat(invoice.cgst).toFixed(2)}`],
+          ['SGST @ 2.5%', `INR ${parseFloat(invoice.sgst).toFixed(2)}`]
+        ]
+      : [['IGST @ 5.0%', `INR ${parseFloat(invoice.igst).toFixed(2)}`]]),
+    ['Round Off', `${parseFloat(invoice.roundoff) >= 0 ? '+' : ''}INR ${parseFloat(invoice.roundoff).toFixed(2)}`],
   ];
 
-  doc.setFontSize(8);
-  taxLines.forEach(([label, val]) => {
-    doc.setTextColor(80, 80, 100);
+  doc.setFontSize(8.5);
+  summary.forEach(([lbl, val]) => {
     doc.setFont('helvetica', 'normal');
-    doc.text(label, taxX - 50, ty + 5);
-    doc.setTextColor(40, 40, 60);
-    doc.text(val, taxX, ty + 5, { align: 'right' });
-    ty += 6;
+    doc.setTextColor(...secondaryColor);
+    doc.text(lbl, calcX - 60, taxY);
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...primaryColor);
+    doc.text(val, calcX, taxY, { align: 'right' });
+    taxY += 5.5;
   });
 
-  // Total box
-  doc.setFillColor(20, 20, 40);
-  doc.roundedRect(W - 80, ty + 2, 66, 12, 2, 2, 'F');
-  doc.setFontSize(10);
+  // Total highlighting box
+  doc.setFillColor(...lightGray);
+  doc.setDrawColor(...borderGray);
+  doc.roundedRect(calcX - 64, taxY + 1, 64, 10, 1.5, 1.5, 'FD');
+
+  doc.setFontSize(9.5);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(108, 99, 255);
-  doc.text('TOTAL:', W - 76, ty + 10);
-  doc.setTextColor(255, 255, 255);
-  doc.text(`₹${parseFloat(invoice.total).toFixed(2)}`, W - 18, ty + 10, { align: 'right' });
+  doc.setTextColor(...primaryColor);
+  doc.text('Grand Total:', calcX - 60, taxY + 7.5);
+  doc.text(`INR ${parseFloat(invoice.total).toFixed(2)}`, calcX - 4, taxY + 7.5, { align: 'right' });
 
-  // Footer section
-  const footY = ty + 22;
+  // 6. Payment & Bank Information Block (Left aligned, vertically matches total box)
+  const infoY = finalY;
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...primaryColor);
+  doc.text('Payment Terms:', 14, infoY);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...secondaryColor);
+  doc.text('Payment due on receipt of invoice.', 14, infoY + 5);
 
-  doc.setDrawColor(200, 200, 220);
-  doc.setLineWidth(0.3);
-  doc.line(14, footY, W - 14, footY);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...primaryColor);
+  doc.text('Our Bank Account Details:', 14, infoY + 12);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...secondaryColor);
+  doc.text(`Bank Name:  ${COMPANY.bank}`, 14, infoY + 17);
+  doc.text(`Branch:         ${COMPANY.branch}`, 14, infoY + 21);
+  doc.text(`A/C Number:  ${COMPANY.account}`, 14, infoY + 25);
+  doc.text(`IFS Code:      ${COMPANY.ifsc}`, 14, infoY + 29);
 
-  // Payment Terms
+  // 7. Signature (Clean right aligned bottom section)
+  const signY = Math.max(taxY + 24, infoY + 38);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(50, 50, 80);
-  doc.text('Payment Term:', 14, footY + 7);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(80, 80, 100);
-  doc.text('Payment due on receipt of invoice.', 14, footY + 13);
+  doc.setTextColor(...primaryColor);
+  doc.text('For VIDHIM ENTERPRISES', W - 14, signY, { align: 'right' });
 
-  // Bank Details
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(50, 50, 80);
-  doc.text('Bank Details:', 14, footY + 22);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(80, 80, 100);
-  doc.text(COMPANY.bank, 14, footY + 28);
-  doc.text(`A/C No: ${COMPANY.account}`, 14, footY + 34);
-  doc.text(`IFSC Code: ${COMPANY.ifsc}`, 14, footY + 40);
+  doc.setTextColor(...secondaryColor);
+  doc.text('Authorized Signatory', W - 14, signY + 15, { align: 'right' });
 
-  // Signature
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(50, 50, 80);
-  doc.text('For VIDHIM ENTERPRISES', W - 14, footY + 28, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(120, 120, 150);
-  doc.text('Authorised Signatory', W - 14, footY + 46, { align: 'right' });
+  // Clean footer line
+  doc.setDrawColor(...borderGray);
+  doc.line(14, signY + 20, W - 14, signY + 20);
+
+  doc.setFontSize(7.5);
+  doc.text('Thank you for your business!', W / 2, signY + 24, { align: 'center' });
 
   doc.save(`Invoice_${invoice.invoice_number}.pdf`);
 }

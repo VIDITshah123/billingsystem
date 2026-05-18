@@ -1,6 +1,10 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import Sidebar from './components/Sidebar';
+import API from './api';
+
+import { Navigation } from './components/Navigation';
+import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Customers from './pages/Customers';
 import Products from './pages/Products';
@@ -10,10 +14,53 @@ import InvoiceDetail from './pages/InvoiceDetail';
 import Reports from './pages/Reports';
 
 export default function App() {
+  const [authenticated, setAuthenticated] = useState(false);
+  const [checking, setChecking] = useState(true);
+
+  const checkAuth = async () => {
+    const token = localStorage.getItem('vidhim_billing_token');
+    if (!token) {
+      setAuthenticated(false);
+      setChecking(false);
+      return;
+    }
+    // Set global bearer header
+    API.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    try {
+      await API.get('/auth/verify');
+      setAuthenticated(true);
+    } catch {
+      localStorage.removeItem('vidhim_billing_token');
+      setAuthenticated(false);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('vidhim_billing_token');
+    setAuthenticated(false);
+  };
+
+  if (checking) return <div className="spinner" />;
+
+  if (!authenticated) {
+    return (
+      <>
+        <Login onLoginSuccess={checkAuth} />
+        <Toaster position="top-right" />
+      </>
+    );
+  }
+
   return (
     <BrowserRouter>
       <div className="app-layout">
-        <Sidebar />
+        <Navigation onLogout={handleLogout} />
         <main className="main-content">
           <Routes>
             <Route path="/" element={<Dashboard />} />
@@ -23,6 +70,7 @@ export default function App() {
             <Route path="/invoices/new" element={<NewInvoice />} />
             <Route path="/invoices/:id" element={<InvoiceDetail />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>
       </div>
@@ -30,14 +78,12 @@ export default function App() {
         position="top-right"
         toastOptions={{
           style: {
-            background: '#1e2130',
-            color: '#e8eaf6',
-            border: '1px solid #2e3148',
-            borderRadius: '10px',
+            background: '#ffffff',
+            color: '#0f172a',
+            border: '1px solid #e2e8f0',
+            borderRadius: '8px',
             fontSize: '13px',
           },
-          success: { iconTheme: { primary: '#4caf87', secondary: '#1e2130' } },
-          error: { iconTheme: { primary: '#f06292', secondary: '#1e2130' } },
         }}
       />
     </BrowserRouter>

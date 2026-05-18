@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import API from '../api';
 
 export default function Dashboard() {
@@ -25,21 +26,21 @@ export default function Dashboard() {
       </div>
 
       <div className="stat-grid">
-        <div className="stat-card">
+        <Link to="/customers" style={{ textDecoration: 'none', color: 'inherit' }} className="stat-card">
           <div className="stat-icon">👤</div>
           <div className="stat-value">{stats.customers}</div>
-          <div className="stat-label">Total Customers</div>
-        </div>
-        <div className="stat-card green">
+          <div className="stat-label">Total Customers (Manage)</div>
+        </Link>
+        <Link to="/products" style={{ textDecoration: 'none', color: 'inherit' }} className="stat-card green">
           <div className="stat-icon">📦</div>
           <div className="stat-value">{stats.products}</div>
-          <div className="stat-label">Total Products</div>
-        </div>
-        <div className="stat-card orange">
+          <div className="stat-label">Total Products (Manage)</div>
+        </Link>
+        <Link to="/invoices" style={{ textDecoration: 'none', color: 'inherit' }} className="stat-card orange">
           <div className="stat-icon">🧾</div>
           <div className="stat-value">{stats.invoices}</div>
           <div className="stat-label">Total Invoices</div>
-        </div>
+        </Link>
         <div className="stat-card pink">
           <div className="stat-icon">💰</div>
           <div className="stat-value">₹{stats.revenue.toFixed(2)}</div>

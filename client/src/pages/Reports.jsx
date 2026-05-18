@@ -1,178 +1,317 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import API from '../api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import toast from 'react-hot-toast';
 
 export default function Reports() {
+  const [period, setPeriod] = useState('custom'); // 'custom' | 'monthly' | 'quarterly' | 'yearly'
+  
+  // Custom Date Range
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [invoices, setInvoices] = useState([]);
-  const [fetched, setFetched] = useState(false);
+  
+  // Financial Year Filter States
+  const [fyYear, setFyYear] = useState(new Date().getFullYear().toString());
+  const [selectedMonth, setSelectedMonth] = useState('04'); // April default
+  const [selectedQuarter, setSelectedQuarter] = useState('Q1'); // Q1 (Apr-Jun) default
+
+  // All Detailed Invoice line items (one row per line item, or summarized by invoice)
+  const [itemsData, setItemsData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [fetched, setFetched] = useState(false);
+
+  // Dynamic Column Selector State
+  const [columns, setColumns] = useState({
+    date: true,
+    invoice_number: true,
+    customer_name: true,
+    customer_gst: true,
+    product_name: true,
+    hsn_code: true,
+    quantity: true,
+    rate: true,
+    taxable_value: true,
+    cgst: true,
+    sgst: true,
+    igst: true,
+    roundoff: false,
+    total: true
+  });
+
+  const availableColumns = [
+    { key: 'date', label: 'Date' },
+    { key: 'invoice_number', label: 'Bill No' },
+    { key: 'customer_name', label: 'Client Name' },
+    { key: 'customer_gst', label: 'Client GST' },
+    { key: 'product_name', label: 'Product Name' },
+    { key: 'hsn_code', label: 'HSN' },
+    { key: 'quantity', label: 'Quantity' },
+    { key: 'rate', label: 'Rate' },
+    { key: 'taxable_value', label: 'Taxable' },
+    { key: 'cgst', label: 'CGST' },
+    { key: 'sgst', label: 'SGST' },
+    { key: 'igst', label: 'IGST' },
+    { key: 'roundoff', label: 'Roundoff' },
+    { key: 'total', label: 'Total' }
+  ];
+
+  // Helper: Get Financial Year start and end dates based on year input (e.g. FY 2024 -> 1st Apr 2024 to 31st Mar 2025)
+  const getFYDates = () => {
+    const yr = parseInt(fyYear);
+    if (period === 'yearly') {
+      return {
+        startDate: `${yr}-04-01`,
+        endDate: `${yr + 1}-03-31`
+      };
+    }
+    if (period === 'monthly') {
+      const monthInt = parseInt(selectedMonth);
+      const targetYear = monthInt >= 4 ? yr : yr + 1;
+      const daysInMonth = new Date(targetYear, monthInt, 0).getDate();
+      return {
+        startDate: `${targetYear}-${selectedMonth.padStart(2, '0')}-01`,
+        endDate: `${targetYear}-${selectedMonth.padStart(2, '0')}-${daysInMonth}`
+      };
+    }
+    if (period === 'quarterly') {
+      if (selectedQuarter === 'Q1') {
+        return { startDate: `${yr}-04-01`, endDate: `${yr}-06-30` };
+      } else if (selectedQuarter === 'Q2') {
+        return { startDate: `${yr}-07-01`, endDate: `${yr}-09-30` };
+      } else if (selectedQuarter === 'Q3') {
+        return { startDate: `${yr}-10-01`, endDate: `${yr}-12-31` };
+      } else {
+        return { startDate: `${yr + 1}-01-01`, endDate: `${yr + 1}-03-31` };
+      }
+    }
+    return { startDate: from, endDate: to };
+  };
 
   const fetchReport = async () => {
     setLoading(true);
+    const { startDate, endDate } = getFYDates();
     try {
       const params = {};
-      if (from) params.from = from;
-      if (to) params.to = to;
-      const res = await API.get('/invoices', { params });
-      setInvoices(res.data);
+      if (startDate) params.from = startDate;
+      if (endDate) params.to = endDate;
+      // Get granular list item report
+      const res = await API.get('/reports/items', { params });
+      setItemsData(res.data);
       setFetched(true);
     } catch {
-      setInvoices([]);
+      toast.error('Failed to load reports');
+      setItemsData([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const total = invoices.reduce((s, i) => s + parseFloat(i.total), 0);
-  const taxable = invoices.reduce((s, i) => s + parseFloat(i.taxable_value), 0);
+  const toggleColumn = (key) => {
+    setColumns(c => ({ ...c, [key]: !c[key] }));
+  };
 
   const exportPDF = () => {
+    const activeHeaders = availableColumns.filter(col => columns[col.key]);
+    if (activeHeaders.length === 0) {
+      toast.error('Please select at least one column to include in report');
+      return;
+    }
+
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
 
-    doc.setFillColor(20, 20, 40);
-    doc.rect(0, 0, W, 20, 'F');
-    doc.setFontSize(13);
+    // Elegant professional report header
+    doc.setFillColor(15, 23, 42); // Elegant slate gray dark header
+    doc.rect(0, 0, W, 22, 'F');
+
+    doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(108, 99, 255);
-    doc.text('VIDHIM ENTERPRISES — Invoice Report', 14, 13);
+    doc.setTextColor(255, 255, 255);
+    doc.text('VIDHIM ENTERPRISES — GST Report', 14, 14);
 
-    doc.setFontSize(8);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(180, 180, 200);
-    const range = from || to ? `Period: ${from || 'start'} to ${to || 'today'}` : 'All Invoices';
-    doc.text(range, W - 14, 13, { align: 'right' });
+    const { startDate, endDate } = getFYDates();
+    const periodStr = startDate || endDate ? `Duration: ${startDate || 'start'} to ${endDate || 'end'}` : 'Full Duration';
+    doc.text(periodStr, W - 14, 14, { align: 'right' });
 
-    const rows = invoices.map((inv, i) => [
-      i + 1,
-      inv.invoice_number,
-      inv.invoice_date,
-      inv.customer_name,
-      inv.customer_gst,
-      inv.tax_type === 'cgst_sgst' ? 'CGST+SGST' : 'IGST',
-      `₹${parseFloat(inv.taxable_value).toFixed(2)}`,
-      inv.tax_type === 'cgst_sgst'
-        ? `₹${parseFloat(inv.cgst).toFixed(2)} + ₹${parseFloat(inv.sgst).toFixed(2)}`
-        : `₹${parseFloat(inv.igst).toFixed(2)}`,
-      `₹${parseFloat(inv.total).toFixed(2)}`,
-    ]);
-
-    autoTable(doc, {
-      startY: 24,
-      head: [['#', 'Invoice No', 'Date', 'Customer', 'GST No', 'Tax', 'Taxable Value', 'Tax Amount', 'Total']],
-      body: rows,
-      theme: 'grid',
-      headStyles: { fillColor: [20, 20, 40], textColor: [108, 99, 255], fontSize: 7 },
-      bodyStyles: { fontSize: 7 },
-      foot: [['', '', '', '', '', 'TOTAL', `₹${taxable.toFixed(2)}`, '', `₹${total.toFixed(2)}`]],
-      footStyles: { fillColor: [20, 20, 40], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+    // Table rows
+    const tableHeaders = activeHeaders.map(col => col.label);
+    const tableRows = itemsData.map((it) => {
+      return activeHeaders.map(col => {
+        const val = it[col.key];
+        if (col.key === 'date') return it.invoice_date;
+        if (['taxable_value', 'cgst', 'sgst', 'igst', 'roundoff', 'total', 'rate', 'amount'].includes(col.key)) {
+          return `INR ${parseFloat(val || 0).toFixed(2)}`;
+        }
+        if (col.key === 'quantity') return `${parseFloat(val || 0).toFixed(2)} ${it.unit}`;
+        return val ?? '';
+      });
     });
 
-    doc.save(`Report_${from || 'all'}_${to || 'today'}.pdf`);
+    autoTable(doc, {
+      startY: 26,
+      head: [tableHeaders],
+      body: tableRows,
+      theme: 'grid',
+      headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontSize: 7.5, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 7, textColor: [30, 30, 30] },
+      styles: { lineColor: [220, 220, 225], lineWidth: 0.15 },
+      margin: { left: 10, right: 10 }
+    });
+
+    doc.save(`GST_Report_${startDate || 'all'}_to_${endDate || 'today'}.pdf`);
   };
+
+  const yearsList = [];
+  const currYear = new Date().getFullYear();
+  for (let y = currYear - 3; y <= currYear + 1; y++) {
+    yearsList.push(y.toString());
+  }
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
-          <div className="page-title">Reports</div>
-          <div className="page-subtitle">Filter invoices by date and export</div>
+          <div className="page-title">Financial GST Reports</div>
+          <div className="page-subtitle">Generate custom statements & dynamic columns</div>
         </div>
-        {fetched && invoices.length > 0 && (
-          <button className="btn btn-primary" onClick={exportPDF}>📄 Export PDF</button>
-        )}
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="filter-bar">
-          <div className="form-group">
-            <label className="form-label">From Date</label>
-            <input className="input" type="date" value={from} onChange={e => setFrom(e.target.value)} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">To Date</label>
-            <input className="input" type="date" value={to} onChange={e => setTo(e.target.value)} />
-          </div>
-          <button className="btn btn-primary" onClick={fetchReport} disabled={loading}>
-            {loading ? 'Loading…' : '🔍 Generate Report'}
-          </button>
-          <button className="btn btn-secondary" onClick={() => { setFrom(''); setTo(''); setInvoices([]); setFetched(false); }}>
-            Reset
-          </button>
+      {/* Date & Period filter criteria card */}
+      <div className="card">
+        <div className="form-label" style={{ marginBottom: '8px' }}>Select Statement Period</div>
+        <div className="period-tabs">
+          <button className={`period-tab${period === 'custom' ? ' active' : ''}`} onClick={() => setPeriod('custom')}>Custom Range</button>
+          <button className={`period-tab${period === 'monthly' ? ' active' : ''}`} onClick={() => setPeriod('monthly')}>Monthly FY</button>
+          <button className={`period-tab${period === 'quarterly' ? ' active' : ''}`} onClick={() => setPeriod('quarterly')}>Quarterly FY</button>
+          <button className={`period-tab${period === 'yearly' ? ' active' : ''}`} onClick={() => setPeriod('yearly')}>Yearly FY</button>
         </div>
 
-        {fetched && (
-          <div style={{ display: 'flex', gap: 16, padding: '12px 0 0', borderTop: '1px solid var(--border)', marginTop: 4 }}>
-            <div className="stat-card" style={{ flex: 1, padding: 16 }}>
-              <div className="stat-value" style={{ fontSize: 20 }}>{invoices.length}</div>
-              <div className="stat-label">Invoices</div>
+        <div className="form-row" style={{ marginTop: '14px' }}>
+          {(period === 'monthly' || period === 'quarterly' || period === 'yearly') && (
+            <div className="form-group">
+              <label className="form-label">Financial Year Starting April</label>
+              <select className="input" value={fyYear} onChange={e => setFyYear(e.target.value)}>
+                {yearsList.map(y => (
+                  <option key={y} value={y}>FY {y} - {parseInt(y) + 1}</option>
+                ))}
+              </select>
             </div>
-            <div className="stat-card green" style={{ flex: 1, padding: 16 }}>
-              <div className="stat-value" style={{ fontSize: 20 }}>₹{taxable.toFixed(2)}</div>
-              <div className="stat-label">Taxable Value</div>
+          )}
+
+          {period === 'monthly' && (
+            <div className="form-group">
+              <label className="form-label">Month</label>
+              <select className="input" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+                <option value="04">April</option>
+                <option value="05">May</option>
+                <option value="06">June</option>
+                <option value="07">July</option>
+                <option value="08">August</option>
+                <option value="09">September</option>
+                <option value="10">October</option>
+                <option value="11">November</option>
+                <option value="12">December</option>
+                <option value="01">January</option>
+                <option value="02">February</option>
+                <option value="03">March</option>
+              </select>
             </div>
-            <div className="stat-card orange" style={{ flex: 1, padding: 16 }}>
-              <div className="stat-value" style={{ fontSize: 20 }}>₹{total.toFixed(2)}</div>
-              <div className="stat-label">Total Revenue</div>
+          )}
+
+          {period === 'quarterly' && (
+            <div className="form-group">
+              <label className="form-label">Quarter</label>
+              <select className="input" value={selectedQuarter} onChange={e => setSelectedQuarter(e.target.value)}>
+                <option value="Q1">Q1 (Apr - Jun)</option>
+                <option value="Q2">Q2 (Jul - Sep)</option>
+                <option value="Q3">Q3 (Oct - Dec)</option>
+                <option value="Q4">Q4 (Jan - Mar)</option>
+              </select>
             </div>
+          )}
+
+          {period === 'custom' && (
+            <>
+              <div className="form-group">
+                <label className="form-label">Start Date</label>
+                <input className="input" type="date" value={from} onChange={e => setFrom(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">End Date</label>
+                <input className="input" type="date" value={to} onChange={e => setTo(e.target.value)} />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Dynamic Column Picker Selector Checkboxes */}
+        <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
+          <div className="form-label">Choose details to add in report:</div>
+          <div className="col-grid">
+            {availableColumns.map(col => (
+              <label key={col.key} className={`col-check${columns[col.key] ? ' checked' : ''}`}>
+                <input type="checkbox" checked={columns[col.key]} onChange={() => toggleColumn(col.key)} />
+                {col.label}
+              </label>
+            ))}
           </div>
-        )}
+        </div>
+
+        <button className="btn btn-primary btn-full" onClick={fetchReport} disabled={loading} style={{ marginTop: '18px' }}>
+          {loading ? 'Processing…' : '🔍 Generate Statement'}
+        </button>
       </div>
 
       {fetched && (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Invoice No</th>
-                <th>Date</th>
-                <th>Customer</th>
-                <th>Tax Type</th>
-                <th>Taxable Value</th>
-                <th>Tax</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.length === 0 ? (
-                <tr><td colSpan={8}>
-                  <div className="empty-state">
-                    <div className="empty-icon">📊</div>
-                    <p>No invoices found for selected date range.</p>
-                  </div>
-                </td></tr>
-              ) : invoices.map((inv, i) => {
-                const tax = inv.tax_type === 'cgst_sgst'
-                  ? parseFloat(inv.cgst) + parseFloat(inv.sgst)
-                  : parseFloat(inv.igst);
-                return (
-                  <tr key={inv.id}>
-                    <td className="td-muted">{i + 1}</td>
-                    <td style={{ fontWeight: 700, color: 'var(--accent)' }}>{inv.invoice_number}</td>
-                    <td className="td-muted">{inv.invoice_date}</td>
-                    <td style={{ fontWeight: 500 }}>{inv.customer_name}</td>
-                    <td><span className={`badge ${inv.tax_type === 'cgst_sgst' ? 'badge-purple' : 'badge-orange'}`}>
-                      {inv.tax_type === 'cgst_sgst' ? 'CGST+SGST' : 'IGST'}
-                    </span></td>
-                    <td>₹{parseFloat(inv.taxable_value).toFixed(2)}</td>
-                    <td>₹{tax.toFixed(2)}</td>
-                    <td style={{ fontWeight: 700 }}>₹{parseFloat(inv.total).toFixed(2)}</td>
-                  </tr>
-                );
-              })}
-              {invoices.length > 0 && (
-                <tr style={{ background: 'var(--bg-secondary)', fontWeight: 700 }}>
-                  <td colSpan={5} style={{ textAlign: 'right', color: 'var(--text-muted)', fontSize: 12 }}>TOTAL</td>
-                  <td>₹{taxable.toFixed(2)}</td>
-                  <td></td>
-                  <td style={{ color: 'var(--success)' }}>₹{total.toFixed(2)}</td>
+        <div style={{ marginTop: '20px' }}>
+          <div className="page-header">
+            <div>
+              <div className="page-title" style={{ fontSize: '16px' }}>Statement Summary</div>
+              <div className="page-subtitle">{itemsData.length} records generated</div>
+            </div>
+            {itemsData.length > 0 && (
+              <button className="btn btn-success" onClick={exportPDF}>📄 Download Custom PDF</button>
+            )}
+          </div>
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  {availableColumns.filter(col => columns[col.key]).map(col => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {itemsData.length === 0 ? (
+                  <tr>
+                    <td colSpan={availableColumns.filter(col => columns[col.key]).length} style={{ textAlign: 'center', padding: '24px' }}>
+                      No transactions recorded in selected period.
+                    </td>
+                  </tr>
+                ) : (
+                  itemsData.map((it, idx) => (
+                    <tr key={idx}>
+                      {availableColumns.filter(col => columns[col.key]).map(col => {
+                        const val = it[col.key];
+                        if (col.key === 'date') return <td key={col.key}>{it.invoice_date}</td>;
+                        if (['taxable_value', 'cgst', 'sgst', 'igst', 'roundoff', 'total', 'rate'].includes(col.key)) {
+                          return <td key={col.key} style={{ fontWeight: col.key === 'total' ? '700' : 'normal' }}>₹{parseFloat(val || 0).toFixed(2)}</td>;
+                        }
+                        if (col.key === 'quantity') return <td key={col.key}>{parseFloat(val || 0).toFixed(2)} {it.unit}</td>;
+                        return <td key={col.key}>{val}</td>;
+                      })}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

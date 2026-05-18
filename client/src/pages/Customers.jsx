@@ -2,18 +2,40 @@ import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import API from '../api';
 
+import { validateGST } from '../utils/gstValidator';
+
 function CustomerModal({ customer, onClose, onSaved }) {
   const [form, setForm] = useState({ name: '', address: '', gst_number: '' });
+  const [gstError, setGstError] = useState(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (customer) setForm({ name: customer.name, address: customer.address, gst_number: customer.gst_number });
+    if (customer) {
+      setForm({ name: customer.name, address: customer.address, gst_number: customer.gst_number });
+      setGstError(null);
+    }
   }, [customer]);
+
+  const handleGstChange = (val) => {
+    const clean = val.toUpperCase().trim();
+    setForm(f => ({ ...f, gst_number: clean }));
+    if (clean) {
+      setGstError(validateGST(clean));
+    } else {
+      setGstError(null);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name.trim() || !form.address.trim() || !form.gst_number.trim()) {
       toast.error('All fields are required');
+      return;
+    }
+    const error = validateGST(form.gst_number);
+    if (error) {
+      setGstError(error);
+      toast.error('Please correct GST number format');
       return;
     }
     setLoading(true);
@@ -55,12 +77,13 @@ function CustomerModal({ customer, onClose, onSaved }) {
           </div>
           <div className="form-group">
             <label className="form-label">GST Number *</label>
-            <input className="input" placeholder="e.g. 27ABCDE1234F1Z5" value={form.gst_number}
-              onChange={e => setForm(f => ({ ...f, gst_number: e.target.value.toUpperCase() }))} />
+            <input className="input" placeholder="e.g. 27AXVPS9856J1Z4" value={form.gst_number}
+              onChange={e => handleGstChange(e.target.value)} />
+            {gstError && <div style={{ color: 'var(--danger)', fontSize: '11px', marginTop: '4px', fontWeight: '600' }}>⚠️ {gstError}</div>}
           </div>
           <div className="modal-footer">
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
+            <button type="submit" className="btn btn-primary" disabled={loading || !!gstError}>
               {loading ? 'Saving…' : 'Save Customer'}
             </button>
           </div>
