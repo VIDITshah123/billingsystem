@@ -121,6 +121,89 @@ router.post('/', (req, res) => {
   }
 });
 
+// PUT update invoice
+router.put('/:id', (req, res) => {
+  const { invoice_number, invoice_date, customer_id, tax_type, items } = req.body;
+  const invoiceId = req.params.id;
+
+  if (!invoice_number || !invoice_date || !customer_id || !tax_type || !items || items.length === 0) {
+    return res.status(400).json({ error: 'All fields and at least one item are required' });
+  }
+  if (!['cgst_sgst', 'igst'].includes(tax_type)) {
+    return res.status(400).json({ error: 'tax_type must be cgst_sgst or igst' });
+  }
+
+  // Validate items
+  for (const item of items) {
+    if (!item.product_id || !item.quantity || !item.rate) {
+      return res.status(400).json({ error: 'Each item needs product_id, quantity, and rate' });
+    }
+  }
+
+  // Calculate values
+  let taxable_value = 0;
+  const processedItems = items.map(item => {
+    const qty = r2(parseFloat(item.quantity));
+    const rate = r2(parseFloat(item.rate));
+    const amount = r2(qty * rate);
+    taxable_value += amount;
+    return { product_id: item.product_id, quantity: qty, rate, amount };
+  });
+  taxable_value = r2(taxable_value);
+
+  let cgst = 0, sgst = 0, igst = 0;
+  if (tax_type === 'cgst_sgst') {
+    cgst = r2(taxable_value * 0.025);
+    sgst = r2(taxable_value * 0.025);
+  } else {
+    igst = r2(taxable_value * 0.05);
+  }
+
+  const subtotal = r2(taxable_value + cgst + sgst + igst);
+  const decimal = subtotal - Math.floor(subtotal);
+  const roundoff = decimal >= 0.5 ? r2(1 - decimal) : r2(-decimal);
+  const total = r2(subtotal + roundoff);
+
+  // Update in a transaction
+  const updateInvoiceTransaction = db.transaction(() => {
+    // Delete old items
+    db.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(invoiceId);
+
+    // Update main invoice
+    const result = db.prepare(`
+      UPDATE invoices
+      SET invoice_number = ?, invoice_date = ?, customer_id = ?, tax_type = ?, taxable_value = ?, cgst = ?, sgst = ?, igst = ?, roundoff = ?, total = ?
+      WHERE id = ?
+    `).run(invoice_number, invoice_date, customer_id, tax_type, taxable_value, cgst, sgst, igst, roundoff, total, invoiceId);
+
+    if (result.changes === 0) {
+      throw new Error('Invoice not found');
+    }
+
+    // Insert new items
+    const insertItem = db.prepare(`
+      INSERT INTO invoice_items (invoice_id, product_id, quantity, rate, amount)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    for (const item of processedItems) {
+      insertItem.run(invoiceId, item.product_id, item.quantity, item.rate, item.amount);
+    }
+  });
+
+  try {
+    updateInvoiceTransaction();
+    res.json({ id: invoiceId, invoice_number, total });
+  } catch (err) {
+    if (err.message === 'Invoice not found') {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+    if (err.message.includes('UNIQUE')) {
+      return res.status(400).json({ error: 'Invoice number already exists' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE invoice
 router.delete('/:id', (req, res) => {
   const result = db.prepare(`DELETE FROM invoices WHERE id = ?`).run(req.params.id);

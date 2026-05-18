@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import API from '../api';
 import { validateGST } from '../utils/gstValidator';
@@ -10,6 +10,9 @@ const EMPTY_ITEM = () => ({ product_id: '', quantity: '', rate: '', amount: 0 })
 
 export default function NewInvoice() {
   const navigate = useNavigate();
+  const { id } = useParams();
+  const isEdit = !!id;
+
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState({
@@ -22,9 +25,37 @@ export default function NewInvoice() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    API.get('/customers').then(r => setCustomers(r.data));
-    API.get('/products').then(r => setProducts(r.data));
-  }, []);
+    // Load customers and products first
+    Promise.all([
+      API.get('/customers'),
+      API.get('/products')
+    ]).then(([cRes, pRes]) => {
+      setCustomers(cRes.data);
+      setProducts(pRes.data);
+
+      // If in edit mode, fetch the invoice details
+      if (isEdit) {
+        API.get(`/invoices/${id}`).then(res => {
+          const inv = res.data;
+          setForm({
+            invoice_number: inv.invoice_number,
+            invoice_date: inv.invoice_date,
+            customer_id: String(inv.customer_id),
+            tax_type: inv.tax_type,
+          });
+          setItems(inv.items.map(it => ({
+            product_id: String(it.product_id),
+            quantity: String(it.quantity),
+            rate: String(it.rate),
+            amount: r2(parseFloat(it.quantity) * parseFloat(it.rate))
+          })));
+        }).catch(err => {
+          toast.error('Error loading invoice details');
+          navigate('/invoices');
+        });
+      }
+    });
+  }, [id, isEdit, navigate]);
 
   // Calculate totals
   const taxableValue = r2(items.reduce((sum, it) => {
@@ -76,11 +107,17 @@ export default function NewInvoice() {
     }
     setLoading(true);
     try {
-      const res = await API.post('/invoices', { ...form, items: validItems });
-      toast.success(`Invoice #${form.invoice_number} created!`);
-      navigate(`/invoices/${res.data.id}`);
+      if (isEdit) {
+        await API.put(`/invoices/${id}`, { ...form, items: validItems });
+        toast.success(`Invoice #${form.invoice_number} updated successfully!`);
+        navigate(`/invoices/${id}`);
+      } else {
+        const res = await API.post('/invoices', { ...form, items: validItems });
+        toast.success(`Invoice #${form.invoice_number} created successfully!`);
+        navigate(`/invoices/${res.data.id}`);
+      }
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Error creating invoice');
+      toast.error(err.response?.data?.error || `Error ${isEdit ? 'updating' : 'creating'} invoice`);
     } finally {
       setLoading(false);
     }
@@ -90,8 +127,8 @@ export default function NewInvoice() {
     <div className="page" style={{ maxWidth: 900 }}>
       <div className="page-header">
         <div>
-          <div className="page-title">New Invoice</div>
-          <div className="page-subtitle">Create a new billing invoice</div>
+          <div className="page-title">{isEdit ? 'Edit Invoice' : 'New Invoice'}</div>
+          <div className="page-subtitle">{isEdit ? `Modifying Invoice #${form.invoice_number}` : 'Create a new billing invoice'}</div>
         </div>
       </div>
 
@@ -160,7 +197,7 @@ export default function NewInvoice() {
                   const prod = products.find(p => p.id === parseInt(it.product_id));
                   return (
                     <tr key={idx}>
-                      <td>
+                       <td>
                         <select className="input" value={it.product_id}
                           onChange={e => updateItem(idx, 'product_id', e.target.value)}>
                           <option value="">— Select —</option>
@@ -211,9 +248,9 @@ export default function NewInvoice() {
         </div>
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button type="button" className="btn btn-secondary" onClick={() => navigate('/invoices')}>Cancel</button>
+          <button type="button" className="btn btn-secondary" onClick={() => navigate(isEdit ? `/invoices/${id}` : '/invoices')}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Creating…' : '✔ Create Invoice'}
+            {loading ? 'Saving…' : isEdit ? '✔ Save Invoice' : '✔ Create Invoice'}
           </button>
         </div>
       </form>

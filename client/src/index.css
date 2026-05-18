@@ -261,7 +261,11 @@ thead th {
 
 tbody tr { border-bottom: 1px solid var(--border); }
 tbody tr:last-child { border-bottom: none; }
-tbody td { padding: 10px 12px; }
+tbody td { 
+  padding: 10px 12px; 
+  word-break: break-word; 
+  overflow-wrap: break-word; 
+}
 
 /* ── BADGE ── */
 .badge {

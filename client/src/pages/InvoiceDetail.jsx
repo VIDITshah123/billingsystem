@@ -21,8 +21,9 @@ export default function InvoiceDetail() {
           <div className="page-title">Invoice #{invoice.invoice_number}</div>
           <div className="page-subtitle">{invoice.invoice_date} · {invoice.customer_name}</div>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" onClick={() => navigate('/invoices')}>← Back</button>
+          <button className="btn btn-secondary" onClick={() => navigate(`/invoices/edit/${invoice.id}`)}>✏ Edit</button>
           <button className="btn btn-primary" onClick={() => generateInvoicePDF(invoice)}>
             📄 Download PDF
           </button>

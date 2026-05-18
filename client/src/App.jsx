@@ -68,6 +68,7 @@ export default function App() {
             <Route path="/products" element={<Products />} />
             <Route path="/invoices" element={<Invoices />} />
             <Route path="/invoices/new" element={<NewInvoice />} />
+            <Route path="/invoices/edit/:id" element={<NewInvoice />} />
             <Route path="/invoices/:id" element={<InvoiceDetail />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="*" element={<Navigate to="/" />} />

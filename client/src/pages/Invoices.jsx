@@ -71,6 +71,7 @@ export default function Invoices() {
                 <td>
                   <div className="td-actions">
                     <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/invoices/${inv.id}`)}>👁 View</button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/invoices/edit/${inv.id}`)}>✏ Edit</button>
                     <button className="btn btn-danger btn-sm" onClick={() => handleDelete(inv.id, inv.invoice_number)}>🗑</button>
                   </div>
                 </td>
