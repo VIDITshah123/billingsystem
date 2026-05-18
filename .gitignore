@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+client/dist/
+
+# Database files
+server/billing.db*
+
+# Environment files
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
