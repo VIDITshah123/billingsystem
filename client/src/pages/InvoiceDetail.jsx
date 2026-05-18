@@ -57,7 +57,7 @@ export default function InvoiceDetail() {
         <table>
           <thead>
             <tr>
-              <th>#</th>
+              <th>Sr. No.</th>
               <th>Product</th>
               <th>HSN Code</th>
               <th>Qty</th>

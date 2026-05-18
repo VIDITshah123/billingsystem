@@ -111,27 +111,53 @@ export default function Reports() {
     setColumns(c => ({ ...c, [key]: !c[key] }));
   };
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     const activeHeaders = availableColumns.filter(col => columns[col.key]);
     if (activeHeaders.length === 0) {
       toast.error('Please select at least one column to include in report');
       return;
     }
 
+    const toastId = toast.loading('Exporting customized GST report PDF...');
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
+
+    // Dynamically load Roboto Font for Unicode Rupee symbol (₹) support
+    let fontBase64 = null;
+    let currencySymbol = 'Rs. ';
+    try {
+      const res = await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf');
+      if (res.ok) {
+        const buffer = await res.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        fontBase64 = window.btoa(binary);
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+
+    if (fontBase64) {
+      doc.addFileToVFS('Roboto-Regular.ttf', fontBase64);
+      doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+      doc.setFont('Roboto', 'normal');
+      currencySymbol = '₹';
+    } else {
+      doc.setFont('helvetica', 'normal');
+    }
 
     // Elegant professional report header
     doc.setFillColor(15, 23, 42); // Elegant slate gray dark header
     doc.rect(0, 0, W, 22, 'F');
 
     doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
     doc.text('VIDHIM ENTERPRISES — GST Report', 14, 14);
 
     doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'normal');
     doc.setTextColor(180, 180, 200);
     const { startDate, endDate } = getFYDates();
     const periodStr = startDate || endDate ? `Duration: ${startDate || 'start'} to ${endDate || 'end'}` : 'Full Duration';
@@ -144,7 +170,7 @@ export default function Reports() {
         const val = it[col.key];
         if (col.key === 'date') return it.invoice_date;
         if (['taxable_value', 'cgst', 'sgst', 'igst', 'roundoff', 'total', 'rate', 'amount'].includes(col.key)) {
-          return `INR ${parseFloat(val || 0).toFixed(2)}`;
+          return `${currencySymbol}${parseFloat(val || 0).toFixed(2)}`;
         }
         if (col.key === 'quantity') return `${parseFloat(val || 0).toFixed(2)} ${it.unit}`;
         return val ?? '';
@@ -156,13 +182,14 @@ export default function Reports() {
       head: [tableHeaders],
       body: tableRows,
       theme: 'grid',
-      headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontSize: 7.5, fontStyle: 'bold' },
+      headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontSize: 7.5 },
       bodyStyles: { fontSize: 7, textColor: [30, 30, 30] },
-      styles: { lineColor: [220, 220, 225], lineWidth: 0.15 },
+      styles: { font: fontBase64 ? 'Roboto' : 'helvetica', lineColor: [220, 220, 225], lineWidth: 0.15 },
       margin: { left: 10, right: 10 }
     });
 
     doc.save(`GST_Report_${startDate || 'all'}_to_${endDate || 'today'}.pdf`);
+    toast.dismiss(toastId);
   };
 
   const yearsList = [];

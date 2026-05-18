@@ -39,7 +39,7 @@ export default function Invoices() {
         <table>
           <thead>
             <tr>
-              <th>#</th>
+              <th>Sr. No.</th>
               <th>Invoice No</th>
               <th>Date</th>
               <th>Customer</th>

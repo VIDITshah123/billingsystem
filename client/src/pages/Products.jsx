@@ -125,7 +125,7 @@ export default function Products() {
         <table>
           <thead>
             <tr>
-              <th>#</th>
+              <th>Sr. No.</th>
               <th>Product Name</th>
               <th>HSN Code</th>
               <th>Unit</th>

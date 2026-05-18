@@ -144,7 +144,7 @@ export default function Customers() {
         <table>
           <thead>
             <tr>
-              <th>#</th>
+              <th>Sr. No.</th>
               <th>Name</th>
               <th>Address</th>
               <th>GST Number</th>
