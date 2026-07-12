@@ -1,0 +1,54 @@
+name: Deploy Billing System to AWS EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy Application
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            echo "🚀 Starting deployment to EC2..."
+            cd /home/ubuntu/billingsystem
+
+            echo "📥 Fetching latest changes from Git..."
+            git pull origin main
+
+            echo "📦 Building client frontend..."
+            cd client
+            npm install
+            npm run build
+            cd ..
+
+            echo "🔧 Installing server dependencies..."
+            cd server
+            npm install --production
+            cd ..
+
+            echo "🔄 Restarting the PM2 billing-api process..."
+            if pm2 list | grep -q "billing-api"; then
+              pm2 restart billing-api
+            else
+              cd server
+              NODE_ENV=production pm2 start index.js --name billing-api
+              cd ..
+            fi
+
+            echo "💾 Saving PM2 process state..."
+            pm2 save
+
+            echo "✅ Deployment completed successfully!"
