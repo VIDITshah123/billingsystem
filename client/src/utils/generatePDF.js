@@ -36,6 +36,52 @@ async function loadRobotoFont() {
   }
 }
 
+function convertNumberToWords(amount) {
+  const number = Math.round(amount);
+  if (number === 0) return 'Rupees Zero Only';
+
+  const single = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const double = ['', 'Ten', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+  function hundred(n) {
+    let str = '';
+    if (n >= 100) {
+      str += single[Math.floor(n / 100)] + ' Hundred ';
+      n %= 100;
+    }
+    if (n > 0) {
+      if (n < 20) {
+        str += single[n];
+      } else {
+        str += double[Math.floor(n / 10)] + (n % 10 ? ' ' + single[n % 10] : '');
+      }
+    }
+    return str.trim();
+  }
+
+  let temp = number;
+  let wordList = [];
+
+  if (temp >= 10000000) {
+    wordList.push(hundred(Math.floor(temp / 10000000)) + ' Crore');
+    temp %= 10000000;
+  }
+  if (temp >= 100000) {
+    wordList.push(hundred(Math.floor(temp / 100000)) + ' Lakh');
+    temp %= 100000;
+  }
+  if (temp >= 1000) {
+    wordList.push(hundred(Math.floor(temp / 1000)) + ' Thousand');
+    temp %= 1000;
+  }
+  if (temp > 0) {
+    wordList.push(hundred(temp));
+  }
+
+  const words = wordList.join(' ').trim();
+  return `Rupees ${words} Only`;
+}
+
 export async function generateInvoicePDF(invoice) {
   const toastId = toast.loading('Generating high-quality invoice PDF...');
   
@@ -228,8 +274,48 @@ export async function generateInvoicePDF(invoice) {
   doc.text(`A/C Number:  ${COMPANY.account}`, 14, infoY + 25);
   doc.text(`IFS Code:      ${COMPANY.ifsc}`, 14, infoY + 29);
 
+  // 6.1 Terms & Conditions
+  doc.setFontSize(8.5);
+  doc.setTextColor(...primaryColor);
+  doc.text('Terms & Conditions:', 14, infoY + 36);
+
+  doc.setFontSize(7.5);
+  doc.setTextColor(...secondaryColor);
+  const terms = [
+    '1. Payment requested by crossed cheque payee A/c cheque/NEFT/RTGS only',
+    '2. Our responsibility ceases on delivery of the goods to transport',
+    '3. Goods supplied to order will not be accepted back',
+    '4. Subject to Mumbai Jurisdiction',
+    '5. Interest @24% p.a. will be charge on bill remaining unpaid after due date'
+  ];
+
+  let currentTermsY = infoY + 41;
+  terms.forEach(term => {
+    const wrappedTerm = doc.splitTextToSize(term, 110);
+    wrappedTerm.forEach(line => {
+      doc.text(line, 14, currentTermsY);
+      currentTermsY += 3.5;
+    });
+  });
+
+  // 6.2 Amount Chargeable in Words (placed below Grand Total box)
+  const totalWords = convertNumberToWords(invoice.total);
+  let wordsY = taxY + 15;
+  
+  doc.setFontSize(7.5);
+  doc.setTextColor(...secondaryColor);
+  doc.text('Amount Chargeable (in words):', calcX - 60, wordsY);
+
+  doc.setTextColor(...primaryColor);
+  const wordLines = doc.splitTextToSize(totalWords, 60);
+  wordLines.forEach(line => {
+    wordsY += 3.5;
+    doc.text(line, calcX - 60, wordsY);
+  });
+
   // 7. Signature (Clean right aligned bottom section)
-  const signY = Math.max(taxY + 24, infoY + 38);
+  // Ensure it starts below both columns
+  const signY = Math.max(wordsY + 10, currentTermsY + 6);
   doc.setFontSize(8);
   doc.setTextColor(...primaryColor);
   doc.text('For VIDHIM ENTERPRISES', W - 14, signY, { align: 'right' });
