@@ -344,6 +344,9 @@ export async function generateInvoicePDF(invoice) {
   doc.setTextColor(...secondaryColor);
   doc.text('Thank you for your business!', W / 2, signEndY + 6, { align: 'center' });
 
+  // Dynamically crop the page height to fit content exactly and remove trailing whitespace
+  doc.internal.pageSize.height = signEndY + 12;
+
   doc.save(`Invoice_${invoice.invoice_number}.pdf`);
   toast.dismiss(toastId);
 }
