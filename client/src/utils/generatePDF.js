@@ -106,8 +106,9 @@ export async function generateInvoicePDF(invoice) {
 
   // Set the correct font size for address wrapping calculation!
   testDoc.setFontSize(8.5);
-  // Calculate client address wrap Y height
-  const clientAddrLines = testDoc.splitTextToSize(invoice.customer_address, 75);
+  // Calculate client address wrap Y height with carriage return sanitization
+  const sanitizedAddress = (invoice.customer_address || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const clientAddrLines = testDoc.splitTextToSize(sanitizedAddress, 75);
   let addrY = 44 + 10.5; // billY = 44
   clientAddrLines.forEach(() => {
     addrY += 4;
