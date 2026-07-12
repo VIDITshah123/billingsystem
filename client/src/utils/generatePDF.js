@@ -266,7 +266,7 @@ export async function generateInvoicePDF(invoice) {
     drawRect(margin, y, innerW, sRowH);
     colXArr.forEach(x => vline(x, y, y + sRowH));
     doc.setFontSize(7.5);
-    doc.setTextColor(highlight ? [180, 0, 0] : black);
+    doc.setTextColor(...(highlight ? [180, 0, 0] : black));
     doc.text(label, cX.sr + 1, y + 4);
     if (value !== '' && value !== null && value !== undefined) {
       doc.setTextColor(...black);
