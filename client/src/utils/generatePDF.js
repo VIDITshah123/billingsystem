@@ -246,40 +246,68 @@ export async function generateInvoicePDF(invoice) {
     taxY += 5.5;
   });
 
-  // Total highlighting box
+  // Total highlighting box (Width: 60 to match top details block)
   doc.setFillColor(...lightGray);
   doc.setDrawColor(...borderGray);
-  doc.roundedRect(calcX - 64, taxY + 1, 64, 10, 1.5, 1.5, 'FD');
+  doc.roundedRect(W - 74, taxY + 1, 60, 10, 1.5, 1.5, 'FD');
 
   doc.setFontSize(9.5);
   doc.setTextColor(...primaryColor);
-  doc.text('Grand Total:', calcX - 60, taxY + 7.5);
-  doc.text(`${currencySymbol}${parseFloat(invoice.total).toFixed(2)}`, calcX - 4, taxY + 7.5, { align: 'right' });
+  doc.text('Grand Total:', W - 70, taxY + 7.5);
+  doc.text(`${currencySymbol}${parseFloat(invoice.total).toFixed(2)}`, W - 18, taxY + 7.5, { align: 'right' });
 
-  // 6. Payment & Bank Information Block (Left aligned, vertically matches total box)
+  // 6. Payment & Bank Information Block (Left aligned, vertically matches calculations)
   const infoY = finalY;
   doc.setFontSize(8.5);
   doc.setTextColor(...primaryColor);
   doc.text('Payment Terms:', 14, infoY);
   
+  doc.setFontSize(7.5);
   doc.setTextColor(...secondaryColor);
-  doc.text('Payment due on receipt of invoice.', 14, infoY + 5);
+  doc.text('Payment due on receipt of invoice.', 14, infoY + 4.5);
 
-  doc.setTextColor(...primaryColor);
-  doc.text('Our Bank Account Details:', 14, infoY + 12);
-  
-  doc.setTextColor(...secondaryColor);
-  doc.text(`Bank Name:  ${COMPANY.bank}`, 14, infoY + 17);
-  doc.text(`Branch:         ${COMPANY.branch}`, 14, infoY + 21);
-  doc.text(`A/C Number:  ${COMPANY.account}`, 14, infoY + 25);
-  doc.text(`IFS Code:      ${COMPANY.ifsc}`, 14, infoY + 29);
-
-  // 6.1 Terms & Conditions
   doc.setFontSize(8.5);
   doc.setTextColor(...primaryColor);
-  doc.text('Terms & Conditions:', 14, infoY + 36);
+  doc.text('Our Bank Account Details:', 14, infoY + 11);
+  
+  doc.setFontSize(7.5);
+  doc.setTextColor(...secondaryColor);
+  doc.text('Bank Name:  ', 14, infoY + 16);
+  doc.text('Branch:         ', 14, infoY + 19.5);
+  doc.text('A/C Number:  ', 14, infoY + 23);
+  doc.text('IFS Code:      ', 14, infoY + 26.5);
+
+  doc.setTextColor(...primaryColor);
+  doc.text(COMPANY.bank, 32, infoY + 16);
+  doc.text(COMPANY.branch, 32, infoY + 19.5);
+  doc.text(COMPANY.account, 32, infoY + 23);
+  doc.text(COMPANY.ifsc, 32, infoY + 26.5);
+
+  // 6.1 Amount Chargeable in Words (Full-width highlighted box below columns)
+  const totalWords = convertNumberToWords(invoice.total);
+  const wordsY = Math.max(taxY + 15, infoY + 31);
+
+  doc.setFillColor(...lightGray);
+  doc.setDrawColor(...borderGray);
+  doc.setLineWidth(0.2);
+  doc.roundedRect(14, wordsY, W - 28, 8, 1, 1, 'FD');
 
   doc.setFontSize(7.5);
+  doc.setTextColor(...secondaryColor);
+  doc.text('Amount Chargeable (in words):', 18, wordsY + 5.2);
+
+  doc.setTextColor(...primaryColor);
+  doc.text(totalWords, 62, wordsY + 5.2);
+
+  // 6.2 Bottom Blocks Side-by-Side: Terms & Conditions (Left) and Signature (Right)
+  const bottomY = wordsY + 13;
+
+  // Terms & Conditions (Left Column)
+  doc.setFontSize(8.5);
+  doc.setTextColor(...primaryColor);
+  doc.text('Terms & Conditions:', 14, bottomY);
+
+  doc.setFontSize(6.8);
   doc.setTextColor(...secondaryColor);
   const terms = [
     '1. Payment requested by crossed cheque payee A/c cheque/NEFT/RTGS only',
@@ -289,46 +317,32 @@ export async function generateInvoicePDF(invoice) {
     '5. Interest @24% p.a. will be charge on bill remaining unpaid after due date'
   ];
 
-  let currentTermsY = infoY + 41;
+  let termY = bottomY + 4.5;
   terms.forEach(term => {
-    const wrappedTerm = doc.splitTextToSize(term, 110);
+    const wrappedTerm = doc.splitTextToSize(term, 105);
     wrappedTerm.forEach(line => {
-      doc.text(line, 14, currentTermsY);
-      currentTermsY += 3.5;
+      doc.text(line, 14, termY);
+      termY += 3.2;
     });
   });
 
-  // 6.2 Amount Chargeable in Words (placed below Grand Total box)
-  const totalWords = convertNumberToWords(invoice.total);
-  let wordsY = taxY + 15;
-  
-  doc.setFontSize(7.5);
-  doc.setTextColor(...secondaryColor);
-  doc.text('Amount Chargeable (in words):', calcX - 60, wordsY);
-
-  doc.setTextColor(...primaryColor);
-  const wordLines = doc.splitTextToSize(totalWords, 60);
-  wordLines.forEach(line => {
-    wordsY += 3.5;
-    doc.text(line, calcX - 60, wordsY);
-  });
-
-  // 7. Signature (Clean right aligned bottom section)
-  // Ensure it starts below both columns
-  const signY = Math.max(wordsY + 10, currentTermsY + 6);
+  // Signature Block (Right Column)
   doc.setFontSize(8);
   doc.setTextColor(...primaryColor);
-  doc.text('For VIDHIM ENTERPRISES', W - 14, signY, { align: 'right' });
+  doc.text('For VIDHIM ENTERPRISES', W - 14, bottomY + 2, { align: 'right' });
 
   doc.setTextColor(...secondaryColor);
-  doc.text('Authorized Signatory', W - 14, signY + 15, { align: 'right' });
+  doc.text('Authorized Signatory', W - 14, bottomY + 19, { align: 'right' });
 
-  // Clean footer line
+  // Clean Footer Line
+  const signEndY = Math.max(termY, bottomY + 19);
   doc.setDrawColor(...borderGray);
-  doc.line(14, signY + 20, W - 14, signY + 20);
+  doc.setLineWidth(0.2);
+  doc.line(14, signEndY + 2, W - 14, signEndY + 2);
 
   doc.setFontSize(7.5);
-  doc.text('Thank you for your business!', W / 2, signY + 24, { align: 'center' });
+  doc.setTextColor(...secondaryColor);
+  doc.text('Thank you for your business!', W / 2, signEndY + 6, { align: 'center' });
 
   doc.save(`Invoice_${invoice.invoice_number}.pdf`);
   toast.dismiss(toastId);
