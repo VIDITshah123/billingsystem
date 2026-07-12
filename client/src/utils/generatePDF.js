@@ -85,9 +85,6 @@ function convertNumberToWords(amount) {
 export async function generateInvoicePDF(invoice) {
   const toastId = toast.loading('Generating high-quality invoice PDF...');
   
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const W = doc.internal.pageSize.getWidth();
-  
   // Clean color scheme: Slate Gray & Dark Charcoal
   const primaryColor = [15, 23, 42]; // Slate 900
   const secondaryColor = [71, 85, 105]; // Slate 600
@@ -98,11 +95,99 @@ export async function generateInvoicePDF(invoice) {
   const fontBase64 = await loadRobotoFont();
   let currencySymbol = 'Rs. ';
   
+  // 1. Dry run with a test doc to calculate precise height of content
+  const testDoc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  if (fontBase64) {
+    testDoc.addFileToVFS('Roboto-Regular.ttf', fontBase64);
+    testDoc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+    testDoc.setFont('Roboto', 'normal');
+    currencySymbol = '₹';
+  }
+
+  // Calculate client address wrap Y height
+  const clientAddrLines = testDoc.splitTextToSize(invoice.customer_address, 75);
+  let addrY = 44 + 10.5; // billY = 44
+  clientAddrLines.forEach(() => {
+    addrY += 4;
+  });
+  
+  const tableStartY = addrY + 7;
+  const tableRows = invoice.items.map((it, idx) => [
+    idx + 1,
+    it.product_name,
+    it.hsn_code,
+    `${parseFloat(it.quantity).toFixed(2)} ${it.unit}`,
+    `${currencySymbol}${parseFloat(it.rate).toFixed(2)}`,
+    `${currencySymbol}${parseFloat(it.amount).toFixed(2)}`,
+  ]);
+
+  autoTable(testDoc, {
+    startY: tableStartY,
+    head: [['Sr. No.', 'Product Description', 'HSN Code', 'Qty / Unit', 'Rate', 'Amount']],
+    body: tableRows,
+    theme: 'grid',
+    headStyles: { fillColor: primaryColor, textColor: [255, 255, 255], fontSize: 8, halign: 'left' },
+    bodyStyles: { fontSize: 8, textColor: primaryColor },
+    columnStyles: {
+      0: { cellWidth: 8, halign: 'center' },
+      1: { cellWidth: 70 },
+      2: { cellWidth: 20, halign: 'center' },
+      3: { cellWidth: 25, halign: 'right' },
+      4: { cellWidth: 28, halign: 'right' },
+      5: { cellWidth: 31, halign: 'right' },
+    },
+    styles: {
+      font: fontBase64 ? 'Roboto' : 'helvetica',
+      lineColor: borderGray,
+      lineWidth: 0.15
+    },
+    didParseCell: function (data) {
+      if (data.section === 'head' && [3, 4, 5].includes(data.column.index)) {
+        data.cell.styles.halign = 'right';
+      }
+    },
+    margin: { left: 14, right: 14 }
+  });
+
+  const finalY = testDoc.lastAutoTable.finalY + 6;
+
+  // Calculate calculations height
+  let taxY = finalY;
+  const summaryCount = 2 + (invoice.tax_type === 'cgst_sgst' ? 2 : 1);
+  taxY += summaryCount * 5.5;
+
+  const infoY = finalY;
+  const wordsY = Math.max(taxY + 15, infoY + 31);
+  const bottomY = wordsY + 13;
+
+  // Calculate terms wrapping height
+  const terms = [
+    '1. Payment requested by crossed cheque payee A/c cheque/NEFT/RTGS only',
+    '2. Our responsibility ceases on delivery of the goods to transport',
+    '3. Goods supplied to order will not be accepted back',
+    '4. Subject to Mumbai Jurisdiction',
+    '5. Interest @24% p.a. will be charge on bill remaining unpaid after due date'
+  ];
+  let termY = bottomY + 4.5;
+  terms.forEach(term => {
+    const wrappedTerm = testDoc.splitTextToSize(term, 105);
+    wrappedTerm.forEach(() => {
+      termY += 3.2;
+    });
+  });
+
+  const signEndY = Math.max(termY, bottomY + 19);
+  const calculatedPageHeight = signEndY + 12;
+
+  // 2. Initialize the REAL document with exact custom height (so no extra whitespace exists!)
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [210, calculatedPageHeight] });
+  const W = doc.internal.pageSize.getWidth();
+
   if (fontBase64) {
     doc.addFileToVFS('Roboto-Regular.ttf', fontBase64);
     doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
     doc.setFont('Roboto', 'normal');
-    currencySymbol = '₹'; // Successfully loaded unicode font, safe to use ₹ symbol
+    currencySymbol = '₹';
   } else {
     doc.setFont('helvetica', 'normal');
   }
@@ -115,7 +200,6 @@ export async function generateInvoicePDF(invoice) {
   doc.setFontSize(8.5);
   doc.setTextColor(...secondaryColor);
   
-  // Split company address lines for clean vertical rendering
   const companyAddr = COMPANY.address.split('\n');
   doc.text(companyAddr[0], 14, 21.5);
   doc.text(companyAddr[1], 14, 25.5);
@@ -159,28 +243,16 @@ export async function generateInvoicePDF(invoice) {
   doc.setFontSize(8.5);
   doc.setTextColor(...secondaryColor);
   
-  // Wrap and print client address cleanly (limited to 75mm width so it wraps nicely)
-  const clientAddrLines = doc.splitTextToSize(invoice.customer_address, 75);
-  let addrY = billY + 10.5;
+  let currentAddrY = billY + 10.5;
   clientAddrLines.forEach(line => {
-    doc.text(line, 14, addrY);
-    addrY += 4;
+    doc.text(line, 14, currentAddrY);
+    currentAddrY += 4;
   });
 
   doc.setTextColor(...primaryColor);
-  doc.text(`GSTIN: ${invoice.customer_gst}`, 14, addrY + 1);
+  doc.text(`GSTIN: ${invoice.customer_gst}`, 14, currentAddrY + 1);
 
-  // 4. Products Table
-  const tableStartY = addrY + 7;
-  const tableRows = invoice.items.map((it, idx) => [
-    idx + 1,
-    it.product_name,
-    it.hsn_code,
-    `${parseFloat(it.quantity).toFixed(2)} ${it.unit}`,
-    `${currencySymbol}${parseFloat(it.rate).toFixed(2)}`,
-    `${currencySymbol}${parseFloat(it.amount).toFixed(2)}`,
-  ]);
-
+  // 4. Products Table (Render on real doc)
   autoTable(doc, {
     startY: tableStartY,
     head: [['Sr. No.', 'Product Description', 'HSN Code', 'Qty / Unit', 'Rate', 'Amount']],
@@ -204,13 +276,11 @@ export async function generateInvoicePDF(invoice) {
       4: { cellWidth: 28, halign: 'right' },
       5: { cellWidth: 31, halign: 'right' },
     },
-    // Apply loaded Unicode font inside autoTable cells as well
     styles: {
       font: fontBase64 ? 'Roboto' : 'helvetica',
       lineColor: borderGray,
       lineWidth: 0.15
     },
-    // Right align headers for numeric columns
     didParseCell: function (data) {
       if (data.section === 'head' && [3, 4, 5].includes(data.column.index)) {
         data.cell.styles.halign = 'right';
@@ -219,11 +289,9 @@ export async function generateInvoicePDF(invoice) {
     margin: { left: 14, right: 14 }
   });
 
-  const finalY = doc.lastAutoTable.finalY + 6;
-
-  // 5. Calculations / Taxes Block (Right aligned, perfect width calculation)
+  // 5. Calculations / Taxes Block (Right aligned)
   const calcX = W - 14;
-  let taxY = finalY;
+  let currentTaxY = finalY;
 
   const summary = [
     ['Taxable Value', `${currencySymbol}${parseFloat(invoice.taxable_value).toFixed(2)}`],
@@ -239,25 +307,24 @@ export async function generateInvoicePDF(invoice) {
   doc.setFontSize(8.5);
   summary.forEach(([lbl, val]) => {
     doc.setTextColor(...secondaryColor);
-    doc.text(lbl, calcX - 60, taxY);
+    doc.text(lbl, calcX - 60, currentTaxY);
     
     doc.setTextColor(...primaryColor);
-    doc.text(val, calcX, taxY, { align: 'right' });
-    taxY += 5.5;
+    doc.text(val, calcX, currentTaxY, { align: 'right' });
+    currentTaxY += 5.5;
   });
 
-  // Total highlighting box (Width: 60 to match top details block)
+  // Total highlighting box
   doc.setFillColor(...lightGray);
   doc.setDrawColor(...borderGray);
-  doc.roundedRect(W - 74, taxY + 1, 60, 10, 1.5, 1.5, 'FD');
+  doc.roundedRect(W - 74, currentTaxY + 1, 60, 10, 1.5, 1.5, 'FD');
 
   doc.setFontSize(9.5);
   doc.setTextColor(...primaryColor);
-  doc.text('Grand Total:', W - 70, taxY + 7.5);
-  doc.text(`${currencySymbol}${parseFloat(invoice.total).toFixed(2)}`, W - 18, taxY + 7.5, { align: 'right' });
+  doc.text('Grand Total:', W - 70, currentTaxY + 7.5);
+  doc.text(`${currencySymbol}${parseFloat(invoice.total).toFixed(2)}`, W - 18, currentTaxY + 7.5, { align: 'right' });
 
-  // 6. Payment & Bank Information Block (Left aligned, vertically matches calculations)
-  const infoY = finalY;
+  // 6. Payment & Bank Information Block (Left aligned)
   doc.setFontSize(8.5);
   doc.setTextColor(...primaryColor);
   doc.text('Payment Terms:', 14, infoY);
@@ -283,10 +350,8 @@ export async function generateInvoicePDF(invoice) {
   doc.text(COMPANY.account, 32, infoY + 23);
   doc.text(COMPANY.ifsc, 32, infoY + 26.5);
 
-  // 6.1 Amount Chargeable in Words (Full-width highlighted box below columns)
+  // 6.1 Amount Chargeable in Words
   const totalWords = convertNumberToWords(invoice.total);
-  const wordsY = Math.max(taxY + 15, infoY + 31);
-
   doc.setFillColor(...lightGray);
   doc.setDrawColor(...borderGray);
   doc.setLineWidth(0.2);
@@ -300,8 +365,6 @@ export async function generateInvoicePDF(invoice) {
   doc.text(totalWords, 62, wordsY + 5.2);
 
   // 6.2 Bottom Blocks Side-by-Side: Terms & Conditions (Left) and Signature (Right)
-  const bottomY = wordsY + 13;
-
   // Terms & Conditions (Left Column)
   doc.setFontSize(8.5);
   doc.setTextColor(...primaryColor);
@@ -309,20 +372,13 @@ export async function generateInvoicePDF(invoice) {
 
   doc.setFontSize(6.8);
   doc.setTextColor(...secondaryColor);
-  const terms = [
-    '1. Payment requested by crossed cheque payee A/c cheque/NEFT/RTGS only',
-    '2. Our responsibility ceases on delivery of the goods to transport',
-    '3. Goods supplied to order will not be accepted back',
-    '4. Subject to Mumbai Jurisdiction',
-    '5. Interest @24% p.a. will be charge on bill remaining unpaid after due date'
-  ];
-
-  let termY = bottomY + 4.5;
+  
+  let currentTermY = bottomY + 4.5;
   terms.forEach(term => {
     const wrappedTerm = doc.splitTextToSize(term, 105);
     wrappedTerm.forEach(line => {
-      doc.text(line, 14, termY);
-      termY += 3.2;
+      doc.text(line, 14, currentTermY);
+      currentTermY += 3.2;
     });
   });
 
@@ -335,7 +391,6 @@ export async function generateInvoicePDF(invoice) {
   doc.text('Authorized Signatory', W - 14, bottomY + 19, { align: 'right' });
 
   // Clean Footer Line
-  const signEndY = Math.max(termY, bottomY + 19);
   doc.setDrawColor(...borderGray);
   doc.setLineWidth(0.2);
   doc.line(14, signEndY + 2, W - 14, signEndY + 2);
@@ -343,9 +398,6 @@ export async function generateInvoicePDF(invoice) {
   doc.setFontSize(7.5);
   doc.setTextColor(...secondaryColor);
   doc.text('Thank you for your business!', W / 2, signEndY + 6, { align: 'center' });
-
-  // Dynamically crop the page height to fit content exactly and remove trailing whitespace
-  doc.internal.pageSize.height = signEndY + 12;
 
   doc.save(`Invoice_${invoice.invoice_number}.pdf`);
   toast.dismiss(toastId);
