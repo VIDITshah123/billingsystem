@@ -182,10 +182,12 @@ export async function generateInvoicePDF(invoice) {
   });
 
   const signEndY = Math.max(termY, bottomY + 19);
-  const calculatedPageHeight = signEndY + 12;
+  // Ensure height is always > 210mm (page width) to prevent jsPDF from swapping
+  // width/height dimensions when height < width (which would make page narrower and cut off columns)
+  const safePageHeight = Math.max(signEndY + 12, 211);
 
   // 2. Initialize the REAL document with exact custom height (so no extra whitespace exists!)
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [210, calculatedPageHeight] });
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [210, safePageHeight] });
   const W = doc.internal.pageSize.getWidth();
 
   if (fontBase64) {
