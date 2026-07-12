@@ -104,6 +104,8 @@ export async function generateInvoicePDF(invoice) {
     currencySymbol = '₹';
   }
 
+  // Set the correct font size for address wrapping calculation!
+  testDoc.setFontSize(8.5);
   // Calculate client address wrap Y height
   const clientAddrLines = testDoc.splitTextToSize(invoice.customer_address, 75);
   let addrY = 44 + 10.5; // billY = 44
@@ -168,6 +170,8 @@ export async function generateInvoicePDF(invoice) {
     '4. Subject to Mumbai Jurisdiction',
     '5. Interest @24% p.a. will be charge on bill remaining unpaid after due date'
   ];
+  // Set the correct font size for terms wrapping calculation!
+  testDoc.setFontSize(6.8);
   let termY = bottomY + 4.5;
   terms.forEach(term => {
     const wrappedTerm = testDoc.splitTextToSize(term, 105);
