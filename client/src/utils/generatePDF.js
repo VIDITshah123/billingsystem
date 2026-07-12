@@ -83,10 +83,344 @@ function convertNumberToWords(amount) {
 }
 
 export async function generateInvoicePDF(invoice) {
-  const toastId = toast.loading('Generating high-quality invoice PDF...');
-  
-  // Clean color scheme: Slate Gray & Dark Charcoal
-  const primaryColor = [15, 23, 42]; // Slate 900
+  const toastId = toast.loading('Generating invoice PDF...');
+
+  const fontBase64 = await loadRobotoFont();
+  let cs = 'Rs.'; // currency symbol
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth(); // 210
+  const margin = 10;
+  const innerW = W - margin * 2; // 190
+
+  if (fontBase64) {
+    doc.addFileToVFS('Roboto-Regular.ttf', fontBase64);
+    doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+    doc.setFont('Roboto', 'normal');
+    cs = '₹';
+  } else {
+    doc.setFont('helvetica', 'normal');
+  }
+
+  const black   = [0, 0, 0];
+  const navy    = [0, 51, 102];
+  const blue    = [0, 0, 255];
+  const darkRed = [180, 0, 0];
+  const gray    = [200, 200, 200];
+
+  // ─── helper: draw a bordered rect ───
+  function rect(x, y, w, h) {
+    doc.setDrawColor(...black);
+    doc.setLineWidth(0.3);
+    doc.rect(x, y, w, h);
+  }
+
+  // ─── helper: horizontal line ───
+  function hline(x1, y, x2) {
+    doc.setDrawColor(...black);
+    doc.setLineWidth(0.3);
+    doc.line(x1, y, x2, y);
+  }
+
+  // ─── helper: vertical line ───
+  function vline(x, y1, y2) {
+    doc.setDrawColor(...black);
+    doc.setLineWidth(0.3);
+    doc.line(x, y1, x, y2);
+  }
+
+  // ══════════════════════════════════════════
+  // SECTION 1: Company Header Box
+  // ══════════════════════════════════════════
+  const headerH = 28;
+  rect(margin, 10, innerW, headerH);
+
+  doc.setFontSize(16);
+  doc.setTextColor(...navy);
+  doc.setFont(fontBase64 ? 'Roboto' : 'helvetica', 'normal');
+  doc.text('VIDHIM ENTERPRISES', W / 2, 19, { align: 'center' });
+
+  doc.setFontSize(7.5);
+  doc.setTextColor(...black);
+  doc.text(
+    'FIRST FLOOR, 105, BHAURAO UDYOG NAGAR, KHARIGAON , ABOVE S K STEEL, BHAYANDER (E)-401105',
+    W / 2, 24, { align: 'center' }
+  );
+
+  doc.text(`GST No: ${COMPANY.gst}`, W / 2, 28.5, { align: 'center' });
+  doc.text(
+    'Mobile No: 8286287102, 9892352600, E Mail ID: vidhimenterprises@gmail.com',
+    W / 2, 33, { align: 'center' }
+  );
+
+  // ══════════════════════════════════════════
+  // SECTION 2: TAX INVOICE Banner
+  // ══════════════════════════════════════════
+  const bannerY = 10 + headerH;
+  const bannerH = 7;
+  rect(margin, bannerY, innerW, bannerH);
+
+  doc.setFontSize(11);
+  doc.setTextColor(...black);
+  doc.text('TAX  INVOICE', W / 2, bannerY + 5, { align: 'center' });
+
+  // ══════════════════════════════════════════
+  // SECTION 3: Invoice Details (2 columns)
+  // ══════════════════════════════════════════
+  const detailY = bannerY + bannerH;
+  const detailH = 18;
+  const midX = margin + innerW / 2;
+
+  rect(margin, detailY, innerW, detailH);
+  vline(midX, detailY, detailY + detailH);
+
+  doc.setFontSize(8);
+  doc.setTextColor(...black);
+  const leftX = margin + 2;
+  const rightX = midX + 2;
+
+  doc.text('Order No :', leftX, detailY + 5);
+  doc.text(`Invoice No.     :${invoice.invoice_number}`, leftX, detailY + 10);
+  doc.text(`Invoice Date    :${invoice.invoice_date}`, leftX, detailY + 15);
+
+  doc.text('E-way Bill  Reference No :', rightX, detailY + 5);
+  doc.text('Vehicle No :', rightX, detailY + 10);
+  doc.text('Date & Time of Supply :', rightX, detailY + 15);
+
+  // ══════════════════════════════════════════
+  // SECTION 4: Billed To / Shipped To
+  // ══════════════════════════════════════════
+  const sanitizedAddress = (invoice.customer_address || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  doc.setFontSize(7.5);
+  const addrLines = doc.splitTextToSize(sanitizedAddress, 87);
+  const billedH = Math.max(30, 6 + addrLines.length * 4 + 8);
+
+  const billedY = detailY + detailH;
+  rect(margin, billedY, innerW, billedH);
+  vline(midX, billedY, billedY + billedH);
+
+  doc.setFontSize(8);
+  doc.setTextColor(...black);
+  doc.text('Billed to', leftX, billedY + 5);
+
+  doc.setFontSize(8);
+  doc.setTextColor(...blue);
+  doc.text(`Name : ${invoice.customer_name}`, leftX, billedY + 10);
+
+  doc.setFontSize(7.5);
+  doc.setTextColor(...blue);
+  let addrCurY = billedY + 14;
+  const addrPrefix = 'Address : ';
+  const addrIndent = leftX + doc.getTextWidth(addrPrefix);
+  addrLines.forEach((line, i) => {
+    if (i === 0) {
+      doc.text(addrPrefix + line, leftX, addrCurY);
+    } else {
+      doc.text(line, addrIndent, addrCurY);
+    }
+    addrCurY += 4;
+  });
+
+  doc.setFontSize(7.5);
+  doc.setTextColor(...black);
+  doc.text(`GST No : ${invoice.customer_gst}`, leftX, addrCurY + 1);
+
+  // Shipped To (right column — static)
+  doc.setFontSize(8);
+  doc.setTextColor(...black);
+  doc.text('Shipped To :', rightX, billedY + 5);
+  doc.text('Name         :', rightX, billedY + 10);
+  doc.text('Address      :', rightX, billedY + 15);
+
+  // ══════════════════════════════════════════
+  // SECTION 5: Product Table
+  // ══════════════════════════════════════════
+  const tableY = billedY + billedH;
+
+  // Column widths: Sr | Description | HSN | QTY | Rate | Total
+  const cols = { sr: 12, desc: 79, hsn: 24, qty: 20, rate: 20, total: 35 };
+  // X positions
+  const cX = {
+    sr:    margin,
+    desc:  margin + cols.sr,
+    hsn:   margin + cols.sr + cols.desc,
+    qty:   margin + cols.sr + cols.desc + cols.hsn,
+    rate:  margin + cols.sr + cols.desc + cols.hsn + cols.qty,
+    total: margin + cols.sr + cols.desc + cols.hsn + cols.qty + cols.rate,
+  };
+  const tableRight = margin + innerW;
+
+  // Header row
+  const thH = 10;
+  rect(margin, tableY, innerW, thH);
+  Object.values(cX).slice(1).forEach(x => vline(x, tableY, tableY + thH));
+
+  doc.setFontSize(8);
+  doc.setTextColor(...black);
+  doc.text('Sr.\nNo.', cX.sr + cols.sr / 2, tableY + 3.5, { align: 'center' });
+  doc.text('Description of Goods / Service', cX.desc + cols.desc / 2, tableY + 6, { align: 'center' });
+  doc.text('HSN CODE', cX.hsn + cols.hsn / 2, tableY + 6, { align: 'center' });
+  doc.text('QTY', cX.qty + cols.qty / 2, tableY + 6, { align: 'center' });
+  doc.text('Rate', cX.rate + cols.rate / 2, tableY + 6, { align: 'center' });
+  doc.text('Total', cX.total + cols.total / 2, tableY + 6, { align: 'center' });
+
+  // Item rows — minimum 10 rows to fill space
+  const rowH = 7;
+  const minRows = 10;
+  const numItems = invoice.items.length;
+  const numRows = Math.max(numItems, minRows);
+  const itemsStartY = tableY + thH;
+
+  for (let i = 0; i < numRows; i++) {
+    const ry = itemsStartY + i * rowH;
+    hline(margin, ry + rowH, tableRight);
+    Object.values(cX).slice(1).forEach(x => vline(x, ry, ry + rowH));
+    rect(margin, ry, innerW, rowH); // draws the row border
+
+    if (i < numItems) {
+      const it = invoice.items[i];
+      doc.setFontSize(8);
+      doc.setTextColor(...black);
+      doc.text(`${i + 1}`, cX.sr + cols.sr / 2, ry + 5, { align: 'center' });
+      doc.setTextColor(...blue);
+      doc.text(it.product_name, cX.desc + 2, ry + 5);
+      doc.setTextColor(...black);
+      doc.text(`${it.hsn_code}`, cX.hsn + cols.hsn / 2, ry + 5, { align: 'center' });
+      doc.text(`${parseFloat(it.quantity).toFixed(2)}`, cX.qty + cols.qty - 2, ry + 5, { align: 'right' });
+      doc.text(`${parseFloat(it.rate).toFixed(0)}`, cX.rate + cols.rate - 2, ry + 5, { align: 'right' });
+      doc.text(`${parseFloat(it.amount).toFixed(2)}`, cX.total + cols.total - 2, ry + 5, { align: 'right' });
+    }
+  }
+
+  // ══════════════════════════════════════════
+  // SECTION 6: Summary Rows (part of table)
+  // ══════════════════════════════════════════
+  const summaryStartY = itemsStartY + numRows * rowH;
+  const sRowH = 6;
+
+  function summaryRow(label, value, y, bold) {
+    rect(margin, y, innerW, sRowH);
+    Object.values(cX).slice(1).forEach(x => vline(x, y, y + sRowH));
+
+    doc.setFontSize(7.5);
+    doc.setTextColor(bold ? [180, 0, 0] : black);
+    doc.text(label, cX.sr + 1, y + 4);
+
+    if (value !== null && value !== undefined) {
+      doc.setTextColor(...black);
+      doc.text(String(value), cX.total + cols.total - 2, y + 4, { align: 'right' });
+    }
+  }
+
+  const tv = parseFloat(invoice.taxable_value).toFixed(2);
+  const grandTotal = parseFloat(invoice.total).toFixed(2);
+
+  summaryRow('Taxable Value:', tv, summaryStartY, false);
+  summaryRow('Freight & Insurance:', '', summaryStartY + sRowH, false);
+  summaryRow('Total Taxable Value:', tv, summaryStartY + sRowH * 2, false);
+
+  if (invoice.tax_type === 'cgst_sgst') {
+    const cgst = parseFloat(invoice.cgst).toFixed(2);
+    const sgst = parseFloat(invoice.sgst).toFixed(2);
+    summaryRow(`Central Tax (CGST) @:`, cgst, summaryStartY + sRowH * 3, false);
+    summaryRow(`State Tax (SGST) @:`, sgst, summaryStartY + sRowH * 4, false);
+    summaryRow(`Integrated Tax (IGST) @:`, '', summaryStartY + sRowH * 5, false);
+  } else {
+    const igst = parseFloat(invoice.igst).toFixed(2);
+    summaryRow(`Central Tax (CGST) @:`, '', summaryStartY + sRowH * 3, false);
+    summaryRow(`State Tax (SGST) @:`, '', summaryStartY + sRowH * 4, false);
+    summaryRow(`Integrated Tax (IGST) @:`, igst, summaryStartY + sRowH * 5, false);
+  }
+
+  summaryRow('Total Invoice Value:', Math.round(parseFloat(invoice.total)), summaryStartY + sRowH * 6, true);
+
+  // ══════════════════════════════════════════
+  // SECTION 7: Amount in Words
+  // ══════════════════════════════════════════
+  const wordsY = summaryStartY + sRowH * 7;
+  const wordsH = 7;
+  rect(margin, wordsY, innerW, wordsH);
+
+  const totalWords = convertNumberToWords(invoice.total);
+  doc.setFontSize(7.5);
+  doc.setTextColor(...black);
+  doc.text(`AMOUNT IN WORDS : ${totalWords.toUpperCase()}`, margin + 2, wordsY + 4.8);
+
+  // ══════════════════════════════════════════
+  // SECTION 8: Bottom — Payment / Bank / Terms | Certification
+  // ══════════════════════════════════════════
+  const terms = [
+    '1. Payment requested by crossed cheque payee A/c  cheque/NEFT/RTGS only',
+    '2.Our responsibility ceases on delivery of the goods to transport',
+    '3. Goods supplied to order will not be accepted back',
+    '4. Subject to Mumbai Jurisdiction',
+    '5. Interest @24% p.a. will be charge on bill remaining unpaid after due date',
+  ];
+
+  doc.setFontSize(7.5);
+  const termsLines = terms.map(t => doc.splitTextToSize(t, innerW * 0.65));
+  let totalTermLines = 0;
+  termsLines.forEach(tl => { totalTermLines += tl.length; });
+
+  const bottomH = Math.max(48, 6 + totalTermLines * 3.5 + 8);
+  const bottomY = wordsY + wordsH;
+  const splitX = margin + innerW * 0.65;
+
+  rect(margin, bottomY, innerW, bottomH);
+  vline(splitX, bottomY, bottomY + bottomH);
+
+  // Payment Term
+  doc.setFontSize(7.5);
+  doc.setTextColor(...black);
+  doc.text('Payment Term :-', margin + 2, bottomY + 5);
+
+  // Bank Detail
+  doc.text(
+    `Bank Detail :-${COMPANY.bank},${COMPANY.branch} {A/C No:-${COMPANY.account},IFS CODE:-${COMPANY.ifsc}}`,
+    margin + 2, bottomY + 11, { maxWidth: splitX - margin - 4 }
+  );
+
+  // Terms & Conditions
+  doc.setFontSize(7.8);
+  doc.setTextColor(...black);
+  doc.text('Terms & Conditions:', margin + 2, bottomY + 20);
+
+  doc.setFontSize(7.5);
+  doc.setTextColor(...blue);
+  let tY = bottomY + 25;
+  terms.forEach(t => {
+    const wrapped = doc.splitTextToSize(t, splitX - margin - 4);
+    wrapped.forEach(line => {
+      doc.text(line, margin + 2, tY);
+      tY += 3.8;
+    });
+  });
+
+  // Right column: certification
+  doc.setFontSize(7.5);
+  doc.setTextColor(...black);
+  const certX = splitX + 2;
+  const certW = tableRight - splitX - 4;
+  doc.text('Certified that the Particulars given', certX + certW / 2, bottomY + 10, { align: 'center' });
+  doc.text('above are true and correct', certX + certW / 2, bottomY + 14, { align: 'center' });
+
+  doc.setFontSize(9);
+  doc.setTextColor(...black);
+  doc.text('FOR VIDHIM ENTERPRISES', certX + certW / 2, bottomY + bottomH - 16, { align: 'center' });
+
+  doc.setFontSize(7.5);
+  doc.text('(Prop: Manoj Shah)', certX + certW / 2, bottomY + bottomH - 5, { align: 'center' });
+
+  // Dynamic page height crop
+  const pageEnd = bottomY + bottomH + 5;
+  const safePageHeight = Math.max(pageEnd, 211);
+  doc.internal.pageSize.height = safePageHeight;
+
+  doc.save(`Invoice_${invoice.invoice_number}.pdf`);
+  toast.dismiss(toastId);
+}
+
+
   const secondaryColor = [71, 85, 105]; // Slate 600
   const lightGray = [241, 245, 249]; // Slate 100
   const borderGray = [226, 232, 240]; // Slate 200
