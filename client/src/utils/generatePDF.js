@@ -78,22 +78,20 @@ export async function generateInvoicePDF(invoice) {
     doc.setFont('helvetica', 'normal');
   }
 
-  // ── Color palette ──────────────────────────────────────
-  const black       = [0,   0,   0  ];
-  const white       = [255, 255, 255];
-  const navy        = [10,  36,  99 ];   // deep navy header
-  const navyMid     = [21,  67,  160];   // medium blue accents
-  const lightBlue   = [235, 242, 255];   // row alternate / words bg
-  const deepRed     = [160,  20,  20];   // total row
-  const lightRed    = [255, 235, 235];   // total row bg
-  const grayRow     = [248, 249, 250];   // alt row shade
-  const midGray     = [120, 120, 120];
+  // ── Strict black & white palette ────────────────────────
+  const black     = [0,   0,   0  ];
+  const white     = [255, 255, 255];
+  const darkFill  = [30,  30,  30 ];   // near-black for filled header rows
+  const midFill   = [80,  80,  80 ];   // medium gray for sub-headers
+  const lightFill = [240, 240, 240];   // very light gray for alt rows
+  const totalFill = [210, 210, 210];   // light gray for total row (premium)
 
-  // ── Drawing helpers ────────────────────────────────────
+  // ── Drawing helpers ──────────────────────────────────────
   const tableRight = margin + innerW;
+  const leftX  = margin + 3;
 
-  function filledRect(x, y, w, h, fillColor) {
-    doc.setFillColor(...fillColor);
+  function filledRect(x, y, w, h, fill) {
+    doc.setFillColor(...fill);
     doc.setDrawColor(...black);
     doc.setLineWidth(0.25);
     doc.rect(x, y, w, h, 'FD');
@@ -108,17 +106,17 @@ export async function generateInvoicePDF(invoice) {
     doc.setLineWidth(0.25);
     doc.line(x, y1, x, y2);
   }
-  function hline(x1, y, x2) {
+  function hline(x1, y, x2, lw = 0.25) {
     doc.setDrawColor(...black);
-    doc.setLineWidth(0.25);
+    doc.setLineWidth(lw);
     doc.line(x1, y, x2, y);
   }
 
   // ══════════════════════════════════════════════════════════
-  // SECTION 1 — Company Header (navy fill, white text)
+  // SECTION 1 — Company Header (dark fill, white text)
   // ══════════════════════════════════════════════════════════
   const headerH = 30;
-  filledRect(margin, 10, innerW, headerH, navy);
+  filledRect(margin, 10, innerW, headerH, darkFill);
 
   doc.setFontSize(18);
   doc.setTextColor(...white);
@@ -126,50 +124,43 @@ export async function generateInvoicePDF(invoice) {
   doc.text('VIDHIM ENTERPRISES', W / 2, 21, { align: 'center' });
 
   doc.setFontSize(7.5);
-  doc.setTextColor(200, 220, 255);
+  doc.setTextColor(200, 200, 200);
   doc.text('FIRST FLOOR, 105, BHAURAO UDYOG NAGAR, KHARIGAON, ABOVE S K STEEL, BHAYANDER (E)-401105', W / 2, 26.5, { align: 'center' });
   doc.text(`GST No: ${COMPANY.gst}`, W / 2, 30.5, { align: 'center' });
   doc.text(`Mobile: ${COMPANY.mobile2}, ${COMPANY.phone.replace('+91 ', '')}   |   Email: ${COMPANY.email}`, W / 2, 34.5, { align: 'center' });
 
   // ══════════════════════════════════════════════════════════
-  // SECTION 2 — TAX INVOICE Banner (light blue fill)
+  // SECTION 2 — TAX INVOICE Banner (light gray fill)
   // ══════════════════════════════════════════════════════════
   const bannerY = 10 + headerH;
   const bannerH = 8;
-  filledRect(margin, bannerY, innerW, bannerH, lightBlue);
+  filledRect(margin, bannerY, innerW, bannerH, lightFill);
   doc.setFontSize(11);
-  doc.setTextColor(...navy);
+  doc.setTextColor(...black);
   doc.text('TAX  INVOICE', W / 2, bannerY + 5.5, { align: 'center' });
 
   // ══════════════════════════════════════════════════════════
-  // SECTION 3 — Invoice Details (2 columns, no Order No)
+  // SECTION 3 — Invoice Details (no Order No)
   // ══════════════════════════════════════════════════════════
   const detailY = bannerY + bannerH;
   const detailH = 14;
   const midX = margin + innerW / 2;
+  const rightX = midX + 3;
 
   outlineRect(margin, detailY, innerW, detailH);
   vline(midX, detailY, detailY + detailH);
 
-  const leftX  = margin + 3;
-  const rightX = midX + 3;
-
   doc.setFontSize(8);
-  doc.setTextColor(...navy);
-  doc.text('Invoice No.', leftX, detailY + 5);
-  doc.text('Invoice Date', leftX, detailY + 11);
-
   doc.setTextColor(...black);
+  doc.text('Invoice No.',  leftX, detailY + 5);
+  doc.text('Invoice Date', leftX, detailY + 11);
   doc.text(`:  ${invoice.invoice_number}`, leftX + 28, detailY + 5);
   doc.text(`:  ${invoice.invoice_date}`,   leftX + 28, detailY + 11);
 
-  doc.setTextColor(...navy);
   doc.text('E-way Bill Ref No.', rightX, detailY + 5);
-  doc.text('Vehicle No.', rightX, detailY + 11);
-
-  doc.setTextColor(...midGray);
-  doc.text(':',  rightX + 35, detailY + 5);
-  doc.text(':',  rightX + 35, detailY + 11);
+  doc.text('Vehicle No.',        rightX, detailY + 11);
+  doc.text(':',  rightX + 36, detailY + 5);
+  doc.text(':',  rightX + 36, detailY + 11);
 
   // ══════════════════════════════════════════════════════════
   // SECTION 4 — Billed To / Shipped To
@@ -183,19 +174,22 @@ export async function generateInvoicePDF(invoice) {
   outlineRect(margin, billedY, innerW, billedH);
   vline(midX, billedY, billedY + billedH);
 
-  // Left column header
-  filledRect(margin, billedY, innerW / 2, 6, lightBlue);
-  doc.setFontSize(7.5);
-  doc.setTextColor(...navy);
+  // "BILLED TO" sub-header strips
+  filledRect(margin, billedY, innerW / 2, 6, lightFill);
+  filledRect(midX,   billedY, innerW / 2, 6, lightFill);
+
+  doc.setFontSize(7);
+  doc.setTextColor(...black);
   doc.text('BILLED TO', leftX, billedY + 4.2);
+  doc.text('SHIPPED TO', rightX, billedY + 4.2);
 
   doc.setFontSize(9);
-  doc.setTextColor(...navy);
-  doc.text(invoice.customer_name, leftX, billedY + 11);
+  doc.setTextColor(...black);
+  doc.text(invoice.customer_name, leftX, billedY + 12);
 
   doc.setFontSize(7.5);
-  doc.setTextColor(60, 80, 120);
-  let addrCurY = billedY + 16;
+  doc.setTextColor(60, 60, 60);
+  let addrCurY = billedY + 17;
   const addrPrefix = 'Address : ';
   const addrIndent = leftX + doc.getTextWidth(addrPrefix);
   addrLines.forEach((line, i) => {
@@ -204,26 +198,19 @@ export async function generateInvoicePDF(invoice) {
   });
 
   doc.setFontSize(7.5);
-  doc.setTextColor(...navy);
-  doc.text(`GST No : ${invoice.customer_gst}`, leftX, addrCurY + 1.5);
-
-  // Right column header
-  filledRect(midX, billedY, innerW / 2, 6, lightBlue);
-  doc.setFontSize(7.5);
-  doc.setTextColor(...navy);
-  doc.text('SHIPPED TO', rightX, billedY + 4.2);
+  doc.setTextColor(...black);
+  doc.text(`GST No : ${invoice.customer_gst}`, leftX, addrCurY + 2);
 
   doc.setFontSize(8);
-  doc.setTextColor(...midGray);
-  doc.text('Name         :', rightX, billedY + 11);
-  doc.text('Address      :', rightX, billedY + 16);
+  doc.setTextColor(100, 100, 100);
+  doc.text('Name         :', rightX, billedY + 12);
+  doc.text('Address      :', rightX, billedY + 17);
 
   // ══════════════════════════════════════════════════════════
   // SECTION 5 — Product Table
   // ══════════════════════════════════════════════════════════
   const tableY = billedY + billedH;
 
-  // Column widths (total 190mm)
   const cols = { sr: 12, desc: 79, hsn: 22, qty: 20, rate: 22, total: 35 };
   const cX = {
     sr:    margin,
@@ -235,9 +222,9 @@ export async function generateInvoicePDF(invoice) {
   };
   const colXArr = Object.values(cX).slice(1);
 
-  // Table header row — navy fill
+  // Table header — dark fill, white text
   const thH = 9;
-  filledRect(margin, tableY, innerW, thH, navy);
+  filledRect(margin, tableY, innerW, thH, darkFill);
   colXArr.forEach(x => vline(x, tableY, tableY + thH));
 
   doc.setFontSize(7.5);
@@ -249,7 +236,7 @@ export async function generateInvoicePDF(invoice) {
   doc.text('Rate', cX.rate + cols.rate / 2, tableY + 5.5, { align: 'center' });
   doc.text('Total', cX.total + cols.total / 2, tableY + 5.5, { align: 'center' });
 
-  // Item rows (min 10), alternate shading
+  // Item rows — alternate light gray / white
   const rowH = 7;
   const numItems = invoice.items.length;
   const numRows = Math.max(numItems, 10);
@@ -257,18 +244,15 @@ export async function generateInvoicePDF(invoice) {
 
   for (let i = 0; i < numRows; i++) {
     const ry = itemsStartY + i * rowH;
-    const rowFill = i % 2 === 1 ? grayRow : white;
-    filledRect(margin, ry, innerW, rowH, rowFill);
+    filledRect(margin, ry, innerW, rowH, i % 2 === 1 ? lightFill : white);
     colXArr.forEach(x => vline(x, ry, ry + rowH));
 
     if (i < numItems) {
       const it = invoice.items[i];
       doc.setFontSize(8);
-      doc.setTextColor(...navy);
-      doc.text(`${i + 1}`, cX.sr + cols.sr / 2, ry + 5, { align: 'center' });
-      doc.setTextColor(30, 80, 160);
-      doc.text(it.product_name, cX.desc + 2, ry + 5);
       doc.setTextColor(...black);
+      doc.text(`${i + 1}`, cX.sr + cols.sr / 2, ry + 5, { align: 'center' });
+      doc.text(it.product_name, cX.desc + 2, ry + 5);
       doc.text(`${it.hsn_code}`, cX.hsn + cols.hsn / 2, ry + 5, { align: 'center' });
       doc.text(`${parseFloat(it.quantity).toFixed(2)}`, cX.qty + cols.qty - 2, ry + 5, { align: 'right' });
       doc.text(`${parseFloat(it.rate).toFixed(0)}`, cX.rate + cols.rate - 2, ry + 5, { align: 'right' });
@@ -277,59 +261,60 @@ export async function generateInvoicePDF(invoice) {
   }
 
   // ══════════════════════════════════════════════════════════
-  // SECTION 6 — Summary Rows
+  // SECTION 6 — Summary Rows (conditional tax, round off)
   // ══════════════════════════════════════════════════════════
   const summaryStartY = itemsStartY + numRows * rowH;
-  const sRowH = 6;
+  const sRowH = 6.5;
 
-  function summaryRow(label, value, y, isTotal) {
-    if (isTotal) {
-      filledRect(margin, y, innerW, sRowH, lightRed);
-    } else {
-      outlineRect(margin, y, innerW, sRowH);
-    }
+  // Separator before summary
+  hline(margin, summaryStartY, tableRight, 0.5);
+
+  function summaryRow(label, value, y, bold) {
+    // light fill for total row, white for others
+    filledRect(margin, y, innerW, sRowH, bold ? totalFill : white);
     colXArr.forEach(x => vline(x, y, y + sRowH));
+    hline(margin, y + sRowH, tableRight);
 
-    doc.setFontSize(7.5);
-    doc.setTextColor(...(isTotal ? deepRed : navy));
-    doc.text(label, cX.sr + 2, y + 4);
+    doc.setFontSize(bold ? 8 : 7.5);
+    doc.setTextColor(...black);
+    doc.text(label, cX.sr + 2, y + sRowH - 2);
 
     if (value !== '' && value !== null && value !== undefined && value !== false) {
-      doc.setTextColor(...(isTotal ? deepRed : black));
-      doc.text(String(value), cX.total + cols.total - 2, y + 4, { align: 'right' });
+      doc.text(String(value), cX.total + cols.total - 2, y + sRowH - 2, { align: 'right' });
     }
   }
 
   const tv = parseFloat(invoice.taxable_value).toFixed(2);
-  summaryRow('Taxable Value:',           tv, summaryStartY,           false);
-  summaryRow('Freight & Insurance:',     '',  summaryStartY + sRowH,   false);
-  summaryRow('Total Taxable Value:',     tv, summaryStartY + sRowH*2, false);
+  const roundOff = parseFloat(invoice.roundoff || 0);
+  const roundOffStr = (roundOff >= 0 ? '+' : '') + roundOff.toFixed(2);
+
+  let sY = summaryStartY;
+  summaryRow('Taxable Value',           tv,         sY,          false); sY += sRowH;
+  summaryRow('Freight & Insurance',     '',         sY,          false); sY += sRowH;
+  summaryRow('Total Taxable Value',     tv,         sY,          false); sY += sRowH;
 
   if (invoice.tax_type === 'cgst_sgst') {
-    summaryRow('Central Tax (CGST) @ 2.5%:',   parseFloat(invoice.cgst).toFixed(2), summaryStartY + sRowH*3, false);
-    summaryRow('State Tax (SGST) @ 2.5%:',     parseFloat(invoice.sgst).toFixed(2), summaryStartY + sRowH*4, false);
-    summaryRow('Integrated Tax (IGST) @:',     '', summaryStartY + sRowH*5, false);
+    summaryRow('Central Tax (CGST) @ 2.5%',  parseFloat(invoice.cgst).toFixed(2), sY, false); sY += sRowH;
+    summaryRow('State Tax (SGST) @ 2.5%',    parseFloat(invoice.sgst).toFixed(2), sY, false); sY += sRowH;
   } else {
-    summaryRow('Central Tax (CGST) @:',        '', summaryStartY + sRowH*3, false);
-    summaryRow('State Tax (SGST) @:',          '', summaryStartY + sRowH*4, false);
-    summaryRow('Integrated Tax (IGST) @ 5%:',  parseFloat(invoice.igst).toFixed(2), summaryStartY + sRowH*5, false);
+    summaryRow('Integrated Tax (IGST) @ 5%', parseFloat(invoice.igst).toFixed(2), sY, false); sY += sRowH;
   }
 
-  summaryRow('Total Invoice Value:', Math.round(parseFloat(invoice.total)), summaryStartY + sRowH * 6, true);
+  summaryRow('Round Off',             roundOffStr,                       sY, false); sY += sRowH;
+  summaryRow('Total Invoice Value',   Math.round(parseFloat(invoice.total)), sY, true);  sY += sRowH;
 
   // ══════════════════════════════════════════════════════════
-  // SECTION 7 — Amount in Words (navy fill, white text)
+  // SECTION 7 — Amount in Words (light gray fill)
   // ══════════════════════════════════════════════════════════
-  const wordsY = summaryStartY + sRowH * 7;
+  const wordsY = sY;
   const wordsH = 8;
-  filledRect(margin, wordsY, innerW, wordsH, lightBlue);
+  filledRect(margin, wordsY, innerW, wordsH, lightFill);
 
   const totalWords = convertNumberToWords(invoice.total);
   doc.setFontSize(7.5);
-  doc.setTextColor(...navy);
-  doc.text('Amount in Words :', margin + 2, wordsY + 5.2);
-  doc.setTextColor(30, 60, 140);
-  doc.text(totalWords.toUpperCase(), margin + 38, wordsY + 5.2);
+  doc.setTextColor(...black);
+  doc.text('Amount in Words :', leftX, wordsY + 5.2);
+  doc.text(totalWords.toUpperCase(), leftX + 37, wordsY + 5.2);
 
   // ══════════════════════════════════════════════════════════
   // SECTION 8 — Bottom: Payment/Terms | Certification
@@ -346,39 +331,39 @@ export async function generateInvoicePDF(invoice) {
   const splitX = margin + innerW * 0.65;
   const termsWrapped = terms.map(t => doc.splitTextToSize(t, splitX - margin - 5));
   const totalTermLines = termsWrapped.reduce((s, l) => s + l.length, 0);
-  const bottomH = Math.max(50, 28 + totalTermLines * 3.8 + 4);
+  const bottomH = Math.max(52, 30 + totalTermLines * 3.8 + 4);
   const bottomY = wordsY + wordsH;
 
   outlineRect(margin, bottomY, innerW, bottomH);
   vline(splitX, bottomY, bottomY + bottomH);
 
-  // Left column header strip
-  filledRect(margin, bottomY, splitX - margin, 6, lightBlue);
-  doc.setFontSize(7.5);
-  doc.setTextColor(...navy);
+  // Left & right sub-header strips
+  filledRect(margin, bottomY, splitX - margin, 6, lightFill);
+  filledRect(splitX, bottomY, tableRight - splitX, 6, lightFill);
+
+  doc.setFontSize(7);
+  doc.setTextColor(...black);
   doc.text('PAYMENT & BANK DETAILS', leftX, bottomY + 4.2);
 
-  doc.setFontSize(7.5);
-  doc.setTextColor(...navy);
-  doc.text('Payment Term :-', leftX, bottomY + 11);
+  const certX = splitX + 3;
+  const certW = tableRight - splitX - 4;
+  doc.text('FOR VIDHIM ENTERPRISES', certX + certW / 2, bottomY + 4.2, { align: 'center' });
 
+  // Bank details
+  doc.setFontSize(7.5);
   doc.setTextColor(...black);
-  doc.text(
-    `Bank : ${COMPANY.bank}, ${COMPANY.branch}`,
-    leftX, bottomY + 16.5, { maxWidth: splitX - margin - 5 }
-  );
-  doc.text(
-    `A/C No: ${COMPANY.account}   |   IFS Code: ${COMPANY.ifsc}`,
-    leftX, bottomY + 21.5, { maxWidth: splitX - margin - 5 }
-  );
+  doc.text('Payment Term :-', leftX, bottomY + 11);
+  doc.setTextColor(50, 50, 50);
+  doc.text(`Bank : ${COMPANY.bank}, ${COMPANY.branch}`, leftX, bottomY + 16.5, { maxWidth: splitX - margin - 5 });
+  doc.text(`A/C No: ${COMPANY.account}   |   IFS Code: ${COMPANY.ifsc}`, leftX, bottomY + 22, { maxWidth: splitX - margin - 5 });
 
   doc.setFontSize(7.8);
-  doc.setTextColor(...navy);
-  doc.text('Terms & Conditions:', leftX, bottomY + 28);
+  doc.setTextColor(...black);
+  doc.text('Terms & Conditions:', leftX, bottomY + 29);
 
   doc.setFontSize(7.2);
-  doc.setTextColor(50, 50, 80);
-  let tY = bottomY + 33;
+  doc.setTextColor(50, 50, 50);
+  let tY = bottomY + 34;
   termsWrapped.forEach(wrapped => {
     wrapped.forEach(line => {
       doc.text(line, leftX, tY);
@@ -386,29 +371,20 @@ export async function generateInvoicePDF(invoice) {
     });
   });
 
-  // Right column header strip
-  filledRect(splitX, bottomY, tableRight - splitX, 6, lightBlue);
-  const certX = splitX + 2;
-  const certW = tableRight - splitX - 4;
-
-  doc.setFontSize(7.5);
-  doc.setTextColor(...navy);
-  doc.text('FOR VIDHIM ENTERPRISES', certX + certW / 2, bottomY + 4.2, { align: 'center' });
-
+  // Right column
   doc.setFontSize(7.2);
-  doc.setTextColor(...midGray);
-  doc.text('Certified that the particulars given', certX + certW / 2, bottomY + 13, { align: 'center' });
-  doc.text('above are true and correct', certX + certW / 2, bottomY + 17, { align: 'center' });
+  doc.setTextColor(80, 80, 80);
+  doc.text('Certified that the particulars given', certX + certW / 2, bottomY + 14, { align: 'center' });
+  doc.text('above are true and correct', certX + certW / 2, bottomY + 18, { align: 'center' });
 
-  // Horizontal line before signature
-  hline(splitX + 3, bottomY + bottomH - 14, tableRight - 3);
+  hline(splitX + 4, bottomY + bottomH - 14, tableRight - 4, 0.4);
 
   doc.setFontSize(9);
-  doc.setTextColor(...navy);
+  doc.setTextColor(...black);
   doc.text('FOR VIDHIM ENTERPRISES', certX + certW / 2, bottomY + bottomH - 9, { align: 'center' });
 
   doc.setFontSize(7.5);
-  doc.setTextColor(...midGray);
+  doc.setTextColor(80, 80, 80);
   doc.text('(Prop: Manoj Shah)', certX + certW / 2, bottomY + bottomH - 4, { align: 'center' });
 
   doc.save(`Invoice_${invoice.invoice_number}.pdf`);
