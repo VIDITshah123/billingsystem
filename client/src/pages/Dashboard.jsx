@@ -56,7 +56,7 @@ export default function Dashboard() {
             <div style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4, lineHeight: 1.6 }}>
               First Floor, 105, Bhaurao Udyog Nagar, Kharigaon, Above S K Steel, Bhayander (E)-401105<br />
               📞 +91 9892352600 &nbsp;|&nbsp; ✉ vidhimenterprises@gmail.com<br />
-              GST No: 27AXVPS9856J1Z4
+              GST No: 27AXVPS9856J1Z4777
             </div>
           </div>
         </div>
