@@ -6,7 +6,6 @@ const COMPANY = {
   name: 'VIDHIM ENTERPRISES',
   address: 'First Floor, 105, Bhaurao Udyog Nagar, Kharigaon,\nAbove S K Steel, Bhayander (E) - 401105',
   phone: '+91 9892352600',
-  mobile2: '8286287102',
   email: 'vidhimenterprises@gmail.com',
   gst: '27AXVPS9856J1Z4',
   bank: 'UNION BANK OF INDIA',
@@ -127,7 +126,7 @@ export async function generateInvoicePDF(invoice) {
   doc.setTextColor(200, 200, 200);
   doc.text('FIRST FLOOR, 105, BHAURAO UDYOG NAGAR, KHARIGAON, ABOVE S K STEEL, BHAYANDER (E)-401105', W / 2, 26.5, { align: 'center' });
   doc.text(`GST No: ${COMPANY.gst}`, W / 2, 30.5, { align: 'center' });
-  doc.text(`Mobile: ${COMPANY.mobile2}, ${COMPANY.phone.replace('+91 ', '')}   |   Email: ${COMPANY.email}`, W / 2, 34.5, { align: 'center' });
+  doc.text(`Mobile: ${COMPANY.phone.replace('+91 ', '')}   |   Email: ${COMPANY.email}`, W / 2, 34.5, { align: 'center' });
 
   // ══════════════════════════════════════════════════════════
   // SECTION 2 — TAX INVOICE Banner (light gray fill)
