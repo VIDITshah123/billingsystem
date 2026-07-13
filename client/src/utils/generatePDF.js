@@ -160,9 +160,9 @@ export async function generateInvoicePDF(invoice) {
   doc.text('E-way Bill Ref No.',    rightX, detailY + 5);
   doc.text('Vehicle No.',           rightX, detailY + 12);
   doc.text('Date & Time of Supply', rightX, detailY + 18);
-  doc.text(':',  rightX + 40, detailY + 5);
-  doc.text(':',  rightX + 40, detailY + 12);
-  doc.text(':',  rightX + 40, detailY + 18);
+  doc.text(`:  ${invoice.eway_bill_no   || ''}`, rightX + 40, detailY + 5);
+  doc.text(`:  ${invoice.vehicle_no     || ''}`, rightX + 40, detailY + 12);
+  doc.text(`:  ${invoice.supply_datetime || ''}`, rightX + 40, detailY + 18);
 
   // ══════════════════════════════════════════════════════════
   // SECTION 4 — Billed To / Shipped To
@@ -206,8 +206,21 @@ export async function generateInvoicePDF(invoice) {
 
   doc.setFontSize(8);
   doc.setTextColor(100, 100, 100);
-  doc.text('Name         :', rightX, billedY + 12);
-  doc.text('Address      :', rightX, billedY + 17);
+  const shippedName = invoice.shipped_to_name || '';
+  const shippedAddr = invoice.shipped_to_address || '';
+  if (shippedName) {
+    doc.setFontSize(8.5);
+    doc.setTextColor(...black);
+    doc.text(shippedName, rightX, billedY + 12);
+    doc.setFontSize(7.5);
+    doc.setTextColor(60, 60, 60);
+    const shAddrLines = doc.splitTextToSize(shippedAddr, 85);
+    let shY = billedY + 17;
+    shAddrLines.forEach(line => { doc.text(line, rightX, shY); shY += 4; });
+  } else {
+    doc.text('Name         :', rightX, billedY + 12);
+    doc.text('Address      :', rightX, billedY + 17);
+  }
 
   // ══════════════════════════════════════════════════════════
   // SECTION 5 — Product Table

@@ -5,7 +5,6 @@ import API from '../api';
 import { validateGST } from '../utils/gstValidator';
 
 const r2 = (n) => Math.round(n * 100) / 100;
-
 const EMPTY_ITEM = () => ({ product_id: '', quantity: '', rate: '', amount: 0 });
 
 export default function NewInvoice() {
@@ -20,12 +19,20 @@ export default function NewInvoice() {
     invoice_date: new Date().toISOString().split('T')[0],
     customer_id: '',
     tax_type: 'cgst_sgst',
+    eway_bill_no: '',
+    vehicle_no: '',
+    supply_datetime: '',
+    shipped_to_name: '',
+    shipped_to_address: '',
   });
   const [items, setItems] = useState([EMPTY_ITEM()]);
   const [loading, setLoading] = useState(false);
 
+  // Shipped-to mode: 'customer' (copy from customer list) | 'manual'
+  const [shippedToMode, setShippedToMode] = useState('manual');
+  const [shippedToCustomerId, setShippedToCustomerId] = useState('');
+
   useEffect(() => {
-    // Load customers and products first
     Promise.all([
       API.get('/customers'),
       API.get('/products')
@@ -33,7 +40,6 @@ export default function NewInvoice() {
       setCustomers(cRes.data);
       setProducts(pRes.data);
 
-      // If in edit mode, fetch the invoice details
       if (isEdit) {
         API.get(`/invoices/${id}`).then(res => {
           const inv = res.data;
@@ -42,6 +48,11 @@ export default function NewInvoice() {
             invoice_date: inv.invoice_date,
             customer_id: String(inv.customer_id),
             tax_type: inv.tax_type,
+            eway_bill_no: inv.eway_bill_no || '',
+            vehicle_no: inv.vehicle_no || '',
+            supply_datetime: inv.supply_datetime || '',
+            shipped_to_name: inv.shipped_to_name || '',
+            shipped_to_address: inv.shipped_to_address || '',
           });
           setItems(inv.items.map(it => ({
             product_id: String(it.product_id),
@@ -49,7 +60,9 @@ export default function NewInvoice() {
             rate: String(it.rate),
             amount: r2(parseFloat(it.quantity) * parseFloat(it.rate))
           })));
-        }).catch(err => {
+          // If shipped_to_name is already filled, default to manual mode
+          if (inv.shipped_to_name) setShippedToMode('manual');
+        }).catch(() => {
           toast.error('Error loading invoice details');
           navigate('/invoices');
         });
@@ -57,7 +70,16 @@ export default function NewInvoice() {
     });
   }, [id, isEdit, navigate]);
 
-  // Calculate totals
+  // When the user picks a customer from the "Shipped To" dropdown, copy their details
+  useEffect(() => {
+    if (shippedToMode === 'customer' && shippedToCustomerId) {
+      const c = customers.find(c => c.id === parseInt(shippedToCustomerId));
+      if (c) {
+        setForm(f => ({ ...f, shipped_to_name: c.name, shipped_to_address: c.address }));
+      }
+    }
+  }, [shippedToCustomerId, shippedToMode, customers]);
+
   const taxableValue = r2(items.reduce((sum, it) => {
     const qty = parseFloat(it.quantity) || 0;
     const rate = parseFloat(it.rate) || 0;
@@ -86,6 +108,8 @@ export default function NewInvoice() {
   const addItem = () => setItems(prev => [...prev, EMPTY_ITEM()]);
   const removeItem = (idx) => setItems(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev);
 
+  const setField = (field, value) => setForm(f => ({ ...f, [field]: value }));
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.invoice_number || !form.invoice_date || !form.customer_id) {
@@ -107,12 +131,13 @@ export default function NewInvoice() {
     }
     setLoading(true);
     try {
+      const payload = { ...form, items: validItems };
       if (isEdit) {
-        await API.put(`/invoices/${id}`, { ...form, items: validItems });
+        await API.put(`/invoices/${id}`, payload);
         toast.success(`Invoice #${form.invoice_number} updated successfully!`);
         navigate(`/invoices/${id}`);
       } else {
-        const res = await API.post('/invoices', { ...form, items: validItems });
+        const res = await API.post('/invoices', payload);
         toast.success(`Invoice #${form.invoice_number} created successfully!`);
         navigate(`/invoices/${res.data.id}`);
       }
@@ -139,18 +164,18 @@ export default function NewInvoice() {
             <div className="form-group">
               <label className="form-label">Invoice Number *</label>
               <input className="input" placeholder="e.g. INV-001" value={form.invoice_number}
-                onChange={e => setForm(f => ({ ...f, invoice_number: e.target.value }))} />
+                onChange={e => setField('invoice_number', e.target.value)} />
             </div>
             <div className="form-group">
               <label className="form-label">Invoice Date *</label>
               <input className="input" type="date" value={form.invoice_date}
-                onChange={e => setForm(f => ({ ...f, invoice_date: e.target.value }))} />
+                onChange={e => setField('invoice_date', e.target.value)} />
             </div>
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Customer *</label>
             <select className="input" value={form.customer_id}
-              onChange={e => setForm(f => ({ ...f, customer_id: e.target.value }))}>
+              onChange={e => setField('customer_id', e.target.value)}>
               <option value="">— Select Customer —</option>
               {customers.map(c => (
                 <option key={c.id} value={c.id}>{c.name} ({c.gst_number})</option>
@@ -164,13 +189,98 @@ export default function NewInvoice() {
           <div className="form-label" style={{ marginBottom: 10 }}>Tax Type *</div>
           <div className="tax-toggle">
             <button type="button" className={`tax-btn${form.tax_type === 'cgst_sgst' ? ' active' : ''}`}
-              onClick={() => setForm(f => ({ ...f, tax_type: 'cgst_sgst' }))}>
+              onClick={() => setField('tax_type', 'cgst_sgst')}>
               CGST (2.5%) + SGST (2.5%)
             </button>
             <button type="button" className={`tax-btn${form.tax_type === 'igst' ? ' active' : ''}`}
-              onClick={() => setForm(f => ({ ...f, tax_type: 'igst' }))}>
+              onClick={() => setField('tax_type', 'igst')}>
               IGST (5%)
             </button>
+          </div>
+        </div>
+
+        {/* E-Way Bill Details */}
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="form-label" style={{ marginBottom: 12, fontSize: 13, fontWeight: 600 }}>
+            📦 E-Way Bill Details <span style={{ fontWeight: 400, color: '#888', fontSize: 11 }}>(optional)</span>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">E-Way Bill Ref. No.</label>
+              <input className="input" placeholder="e.g. EWB-12345678"
+                value={form.eway_bill_no}
+                onChange={e => setField('eway_bill_no', e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Vehicle No.</label>
+              <input className="input" placeholder="e.g. MH04 AB 1234"
+                value={form.vehicle_no}
+                onChange={e => setField('vehicle_no', e.target.value)} />
+            </div>
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Date &amp; Time of Supply</label>
+            <input className="input" type="datetime-local"
+              value={form.supply_datetime}
+              onChange={e => setField('supply_datetime', e.target.value)} />
+          </div>
+        </div>
+
+        {/* Shipped To */}
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div className="form-label" style={{ marginBottom: 0, fontSize: 13, fontWeight: 600 }}>
+              🚚 Shipped To <span style={{ fontWeight: 400, color: '#888', fontSize: 11 }}>(optional)</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button"
+                onClick={() => { setShippedToMode('customer'); setShippedToCustomerId(''); }}
+                style={{
+                  padding: '4px 12px', fontSize: 11, borderRadius: 6, cursor: 'pointer', border: '1px solid #ccc',
+                  background: shippedToMode === 'customer' ? '#1a1a1a' : '#fff',
+                  color: shippedToMode === 'customer' ? '#fff' : '#333',
+                }}>
+                Select from Customers
+              </button>
+              <button type="button"
+                onClick={() => { setShippedToMode('manual'); setShippedToCustomerId(''); }}
+                style={{
+                  padding: '4px 12px', fontSize: 11, borderRadius: 6, cursor: 'pointer', border: '1px solid #ccc',
+                  background: shippedToMode === 'manual' ? '#1a1a1a' : '#fff',
+                  color: shippedToMode === 'manual' ? '#fff' : '#333',
+                }}>
+                Enter Manually
+              </button>
+            </div>
+          </div>
+
+          {shippedToMode === 'customer' && (
+            <div className="form-group" style={{ marginBottom: 12 }}>
+              <label className="form-label">Select Customer to Ship To</label>
+              <select className="input" value={shippedToCustomerId}
+                onChange={e => setShippedToCustomerId(e.target.value)}>
+                <option value="">— Select Customer —</option>
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>{c.name} ({c.gst_number})</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Name</label>
+              <input className="input" placeholder="Shipped-to party name"
+                value={form.shipped_to_name}
+                onChange={e => setField('shipped_to_name', e.target.value)} />
+            </div>
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Address</label>
+            <textarea className="input" rows={2} placeholder="Shipped-to address"
+              value={form.shipped_to_address}
+              style={{ resize: 'vertical' }}
+              onChange={e => setField('shipped_to_address', e.target.value)} />
           </div>
         </div>
 
@@ -197,7 +307,7 @@ export default function NewInvoice() {
                   const prod = products.find(p => p.id === parseInt(it.product_id));
                   return (
                     <tr key={idx}>
-                       <td>
+                      <td>
                         <select className="input" value={it.product_id}
                           onChange={e => updateItem(idx, 'product_id', e.target.value)}>
                           <option value="">— Select —</option>
@@ -217,9 +327,7 @@ export default function NewInvoice() {
                           placeholder="0.00" value={it.rate}
                           onChange={e => updateItem(idx, 'rate', e.target.value)} />
                       </td>
-                      <td style={{ fontWeight: 600 }}>
-                        ₹{it.amount.toFixed(2)}
-                      </td>
+                      <td style={{ fontWeight: 600 }}>₹{it.amount.toFixed(2)}</td>
                       <td>
                         <button type="button" className="btn btn-danger btn-sm"
                           onClick={() => removeItem(idx)}>✕</button>

@@ -52,7 +52,11 @@ router.get('/:id', (req, res) => {
 
 // POST create invoice
 router.post('/', (req, res) => {
-  const { invoice_number, invoice_date, customer_id, tax_type, items } = req.body;
+  const {
+    invoice_number, invoice_date, customer_id, tax_type, items,
+    eway_bill_no = '', vehicle_no = '', supply_datetime = '',
+    shipped_to_name = '', shipped_to_address = ''
+  } = req.body;
 
   if (!invoice_number || !invoice_date || !customer_id || !tax_type || !items || items.length === 0) {
     return res.status(400).json({ error: 'All fields and at least one item are required' });
@@ -61,14 +65,12 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'tax_type must be cgst_sgst or igst' });
   }
 
-  // Validate items
   for (const item of items) {
     if (!item.product_id || !item.quantity || !item.rate) {
       return res.status(400).json({ error: 'Each item needs product_id, quantity, and rate' });
     }
   }
 
-  // Calculate values
   let taxable_value = 0;
   const processedItems = items.map(item => {
     const qty = r2(parseFloat(item.quantity));
@@ -92,12 +94,18 @@ router.post('/', (req, res) => {
   const roundoff = decimal >= 0.5 ? r2(1 - decimal) : r2(-decimal);
   const total = r2(subtotal + roundoff);
 
-  // Insert in a transaction
   const insertInvoice = db.transaction(() => {
     const inv = db.prepare(`
-      INSERT INTO invoices (invoice_number, invoice_date, customer_id, tax_type, taxable_value, cgst, sgst, igst, roundoff, total)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(invoice_number, invoice_date, customer_id, tax_type, taxable_value, cgst, sgst, igst, roundoff, total);
+      INSERT INTO invoices
+        (invoice_number, invoice_date, customer_id, tax_type,
+         taxable_value, cgst, sgst, igst, roundoff, total,
+         eway_bill_no, vehicle_no, supply_datetime, shipped_to_name, shipped_to_address)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      invoice_number, invoice_date, customer_id, tax_type,
+      taxable_value, cgst, sgst, igst, roundoff, total,
+      eway_bill_no, vehicle_no, supply_datetime, shipped_to_name, shipped_to_address
+    );
 
     const invoiceId = inv.lastInsertRowid;
     const insertItem = db.prepare(`
@@ -123,7 +131,11 @@ router.post('/', (req, res) => {
 
 // PUT update invoice
 router.put('/:id', (req, res) => {
-  const { invoice_number, invoice_date, customer_id, tax_type, items } = req.body;
+  const {
+    invoice_number, invoice_date, customer_id, tax_type, items,
+    eway_bill_no = '', vehicle_no = '', supply_datetime = '',
+    shipped_to_name = '', shipped_to_address = ''
+  } = req.body;
   const invoiceId = req.params.id;
 
   if (!invoice_number || !invoice_date || !customer_id || !tax_type || !items || items.length === 0) {
@@ -133,14 +145,12 @@ router.put('/:id', (req, res) => {
     return res.status(400).json({ error: 'tax_type must be cgst_sgst or igst' });
   }
 
-  // Validate items
   for (const item of items) {
     if (!item.product_id || !item.quantity || !item.rate) {
       return res.status(400).json({ error: 'Each item needs product_id, quantity, and rate' });
     }
   }
 
-  // Calculate values
   let taxable_value = 0;
   const processedItems = items.map(item => {
     const qty = r2(parseFloat(item.quantity));
@@ -164,23 +174,25 @@ router.put('/:id', (req, res) => {
   const roundoff = decimal >= 0.5 ? r2(1 - decimal) : r2(-decimal);
   const total = r2(subtotal + roundoff);
 
-  // Update in a transaction
   const updateInvoiceTransaction = db.transaction(() => {
-    // Delete old items
     db.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(invoiceId);
 
-    // Update main invoice
     const result = db.prepare(`
       UPDATE invoices
-      SET invoice_number = ?, invoice_date = ?, customer_id = ?, tax_type = ?, taxable_value = ?, cgst = ?, sgst = ?, igst = ?, roundoff = ?, total = ?
+      SET invoice_number = ?, invoice_date = ?, customer_id = ?, tax_type = ?,
+          taxable_value = ?, cgst = ?, sgst = ?, igst = ?, roundoff = ?, total = ?,
+          eway_bill_no = ?, vehicle_no = ?, supply_datetime = ?,
+          shipped_to_name = ?, shipped_to_address = ?
       WHERE id = ?
-    `).run(invoice_number, invoice_date, customer_id, tax_type, taxable_value, cgst, sgst, igst, roundoff, total, invoiceId);
+    `).run(
+      invoice_number, invoice_date, customer_id, tax_type,
+      taxable_value, cgst, sgst, igst, roundoff, total,
+      eway_bill_no, vehicle_no, supply_datetime, shipped_to_name, shipped_to_address,
+      invoiceId
+    );
 
-    if (result.changes === 0) {
-      throw new Error('Invoice not found');
-    }
+    if (result.changes === 0) throw new Error('Invoice not found');
 
-    // Insert new items
     const insertItem = db.prepare(`
       INSERT INTO invoice_items (invoice_id, product_id, quantity, rate, amount)
       VALUES (?, ?, ?, ?, ?)

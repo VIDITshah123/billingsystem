@@ -53,4 +53,16 @@ db.exec(`
   );
 `);
 
+// Migrate: add new columns to invoices table (safe — ignored if already exist)
+const newCols = [
+  `ALTER TABLE invoices ADD COLUMN eway_bill_no TEXT DEFAULT ''`,
+  `ALTER TABLE invoices ADD COLUMN vehicle_no TEXT DEFAULT ''`,
+  `ALTER TABLE invoices ADD COLUMN supply_datetime TEXT DEFAULT ''`,
+  `ALTER TABLE invoices ADD COLUMN shipped_to_name TEXT DEFAULT ''`,
+  `ALTER TABLE invoices ADD COLUMN shipped_to_address TEXT DEFAULT ''`,
+];
+for (const col of newCols) {
+  try { db.exec(col); } catch (_) { /* column already exists */ }
+}
+
 module.exports = db;
