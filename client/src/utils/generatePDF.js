@@ -143,7 +143,7 @@ export async function generateInvoicePDF(invoice) {
   // SECTION 3 — Invoice Details (no Order No)
   // ══════════════════════════════════════════════════════════
   const detailY = bannerY + bannerH;
-  const detailH = 14;
+  const detailH = 20;
   const midX = margin + innerW / 2;
   const rightX = midX + 3;
 
@@ -153,14 +153,16 @@ export async function generateInvoicePDF(invoice) {
   doc.setFontSize(8);
   doc.setTextColor(...black);
   doc.text('Invoice No.',  leftX, detailY + 5);
-  doc.text('Invoice Date', leftX, detailY + 11);
+  doc.text('Invoice Date', leftX, detailY + 12);
   doc.text(`:  ${invoice.invoice_number}`, leftX + 28, detailY + 5);
-  doc.text(`:  ${invoice.invoice_date}`,   leftX + 28, detailY + 11);
+  doc.text(`:  ${invoice.invoice_date}`,   leftX + 28, detailY + 12);
 
-  doc.text('E-way Bill Ref No.', rightX, detailY + 5);
-  doc.text('Vehicle No.',        rightX, detailY + 11);
-  doc.text(':',  rightX + 36, detailY + 5);
-  doc.text(':',  rightX + 36, detailY + 11);
+  doc.text('E-way Bill Ref No.',    rightX, detailY + 5);
+  doc.text('Vehicle No.',           rightX, detailY + 12);
+  doc.text('Date & Time of Supply', rightX, detailY + 18);
+  doc.text(':',  rightX + 40, detailY + 5);
+  doc.text(':',  rightX + 40, detailY + 12);
+  doc.text(':',  rightX + 40, detailY + 18);
 
   // ══════════════════════════════════════════════════════════
   // SECTION 4 — Billed To / Shipped To
@@ -168,7 +170,8 @@ export async function generateInvoicePDF(invoice) {
   const sanitizedAddress = (invoice.customer_address || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   doc.setFontSize(7.5);
   const addrLines = doc.splitTextToSize(sanitizedAddress, 85);
-  const billedH = Math.max(30, 8 + addrLines.length * 4 + 8);
+  // 6px header strip + 6px customer name + address lines (4px each) + 8px for GST line + 6px bottom padding
+  const billedH = Math.max(34, 6 + 6 + addrLines.length * 4 + 14);
 
   const billedY = detailY + detailH;
   outlineRect(margin, billedY, innerW, billedH);
@@ -272,7 +275,8 @@ export async function generateInvoicePDF(invoice) {
   function summaryRow(label, value, y, bold) {
     // light fill for total row, white for others
     filledRect(margin, y, innerW, sRowH, bold ? totalFill : white);
-    colXArr.forEach(x => vline(x, y, y + sRowH));
+    // Only draw the single divider before the Total value column
+    vline(cX.total, y, y + sRowH);
     hline(margin, y + sRowH, tableRight);
 
     doc.setFontSize(bold ? 8 : 7.5);
