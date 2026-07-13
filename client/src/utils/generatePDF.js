@@ -397,7 +397,7 @@ export async function generateInvoicePDF(invoice) {
 
   doc.setFontSize(9);
   doc.setTextColor(...black);
-  doc.text('FOR VIDHIM ENTERPRISES', certX + certW / 2, bottomY + bottomH - 9, { align: 'center' });
+  // Removed FOR VIDHIM ENTERPRISES from directly above (Prop: Manoj Shah) as requested
 
   doc.setFontSize(7.5);
   doc.setTextColor(80, 80, 80);

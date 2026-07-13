@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import API from '../api';
+import { generateInvoicePDF } from '../utils/generatePDF';
 
 const SORT_FIELDS = ['invoice_number', 'invoice_date', 'customer_name', 'tax_type'];
 
@@ -51,6 +52,18 @@ export default function Invoices() {
     }
   };
 
+  const handleDownloadPDF = async (id) => {
+    const toastId = toast.loading('Fetching invoice details...');
+    try {
+      const res = await API.get(`/invoices/${id}`);
+      await generateInvoicePDF(res.data);
+    } catch (err) {
+      toast.error('Failed to download PDF');
+    } finally {
+      toast.dismiss(toastId);
+    }
+  };
+
   const SortHeader = ({ field, label }) => {
     const active = sortField === field;
     const arrow = active ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕';
@@ -88,12 +101,13 @@ export default function Invoices() {
               <SortHeader field="customer_name"  label="Customer" />
               <SortHeader field="tax_type"       label="Tax Type" />
               <th>Total</th>
+              <th>Download</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 ? (
-              <tr><td colSpan={6}>
+              <tr><td colSpan={7}>
                 <div className="empty-state">
                   <div className="empty-icon">🧾</div>
                   <p>No invoices yet. Create your first invoice.</p>
@@ -110,6 +124,11 @@ export default function Invoices() {
                   </span>
                 </td>
                 <td style={{ fontWeight: 700 }}>₹{parseFloat(inv.total).toFixed(2)}</td>
+                <td>
+                  <button className="btn btn-secondary btn-sm" style={{ gap: '4px' }} onClick={() => handleDownloadPDF(inv.id)}>
+                    📄 PDF
+                  </button>
+                </td>
                 <td>
                   <div className="td-actions">
                     <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/invoices/${inv.id}`)}>👁 View</button>
