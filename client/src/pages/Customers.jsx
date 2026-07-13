@@ -28,15 +28,18 @@ function CustomerModal({ customer, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.address.trim() || !form.gst_number.trim()) {
-      toast.error('All fields are required');
+    if (!form.name.trim() || !form.address.trim()) {
+      toast.error('Name and address are required');
       return;
     }
-    const error = validateGST(form.gst_number);
-    if (error) {
-      setGstError(error);
-      toast.error('Please correct GST number format');
-      return;
+    // Only validate format if GST is provided
+    if (form.gst_number.trim()) {
+      const error = validateGST(form.gst_number);
+      if (error) {
+        setGstError(error);
+        toast.error('Please correct GST number format');
+        return;
+      }
     }
     setLoading(true);
     try {
@@ -76,7 +79,7 @@ function CustomerModal({ customer, onClose, onSaved }) {
               style={{ resize: 'vertical' }} />
           </div>
           <div className="form-group">
-            <label className="form-label">GST Number *</label>
+            <label className="form-label">GST Number <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(optional)</span></label>
             <input className="input" placeholder="e.g. 27AXVPS9856J1Z4" value={form.gst_number}
               onChange={e => handleGstChange(e.target.value)} />
             {gstError && <div style={{ color: 'var(--danger)', fontSize: '11px', marginTop: '4px', fontWeight: '600' }}>⚠️ {gstError}</div>}
@@ -164,7 +167,12 @@ export default function Customers() {
                 <td className="td-muted">{i + 1}</td>
                 <td style={{ fontWeight: 600 }}>{c.name}</td>
                 <td className="td-muted" style={{ maxWidth: 260 }}>{c.address}</td>
-                <td><span className="badge badge-purple">{c.gst_number}</span></td>
+                <td>
+                  {c.gst_number
+                    ? <span className="badge badge-purple">{c.gst_number}</span>
+                    : <span className="td-muted">—</span>
+                  }
+                </td>
                 <td>
                   <div className="td-actions">
                     <button className="btn btn-secondary btn-sm" onClick={() => setModal(c)}>✏️ Edit</button>

@@ -25,9 +25,9 @@ router.get('/:id', (req, res) => {
 
 // POST create customer
 router.post('/', (req, res) => {
-  const { name, address, gst_number } = req.body;
-  if (!name || !address || !gst_number) {
-    return res.status(400).json({ error: 'name, address, and gst_number are required' });
+  const { name, address, gst_number = '' } = req.body;
+  if (!name || !address) {
+    return res.status(400).json({ error: 'name and address are required' });
   }
   const result = db.prepare(
     `INSERT INTO customers (name, address, gst_number) VALUES (?, ?, ?)`
@@ -37,9 +37,9 @@ router.post('/', (req, res) => {
 
 // PUT update customer
 router.put('/:id', (req, res) => {
-  const { name, address, gst_number } = req.body;
-  if (!name || !address || !gst_number) {
-    return res.status(400).json({ error: 'name, address, and gst_number are required' });
+  const { name, address, gst_number = '' } = req.body;
+  if (!name || !address) {
+    return res.status(400).json({ error: 'name and address are required' });
   }
   const result = db.prepare(
     `UPDATE customers SET name = ?, address = ?, gst_number = ? WHERE id = ?`

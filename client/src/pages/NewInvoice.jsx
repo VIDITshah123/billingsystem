@@ -291,6 +291,7 @@ export default function NewInvoice() {
             <button type="button" className="btn btn-secondary btn-sm" onClick={addItem}>+ Add Row</button>
           </div>
 
+          {/* Desktop table */}
           <div className="items-table-wrap">
             <table>
               <thead>
@@ -338,6 +339,54 @@ export default function NewInvoice() {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile card layout */}
+          <div>
+            {items.map((it, idx) => {
+              const prod = products.find(p => p.id === parseInt(it.product_id));
+              return (
+                <div key={idx} className="item-card">
+                  <button type="button" className="btn btn-danger btn-sm item-card-remove"
+                    onClick={() => removeItem(idx)}>✕</button>
+
+                  <div className="form-label" style={{ marginBottom: 4, paddingRight: 32 }}>
+                    Item {idx + 1}
+                  </div>
+
+                  {/* Full-width product dropdown */}
+                  <select className="input" value={it.product_id}
+                    style={{ marginBottom: 8 }}
+                    onChange={e => updateItem(idx, 'product_id', e.target.value)}>
+                    <option value="">— Select Product —</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>
+                    ))}
+                  </select>
+
+                  <div className="item-card-grid">
+                    <div className="item-card-field">
+                      <span className="item-card-label">Qty {prod ? `(${prod.unit})` : ''}</span>
+                      <input className="input" type="number" min="0" step="0.01"
+                        placeholder="0.00" value={it.quantity}
+                        onChange={e => updateItem(idx, 'quantity', e.target.value)} />
+                    </div>
+                    <div className="item-card-field">
+                      <span className="item-card-label">Rate (₹)</span>
+                      <input className="input" type="number" min="0" step="0.01"
+                        placeholder="0.00" value={it.rate}
+                        onChange={e => updateItem(idx, 'rate', e.target.value)} />
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: 'right', marginTop: 8 }}>
+                    <span className="item-card-label">Amount: </span>
+                    <span className="item-card-amount">₹{it.amount.toFixed(2)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
 
           {/* Totals */}
           <div className="totals-box">

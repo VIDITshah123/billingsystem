@@ -236,6 +236,72 @@ body, #root {
   gap: 12px;
 }
 
+/* ── PRODUCTS TABLE (desktop) ── */
+.items-table-wrap {
+  overflow-x: auto;
+}
+
+/* ── PRODUCT ITEM CARDS (mobile) ── */
+.item-card {
+  display: none; /* shown only on mobile via media query */
+}
+
+@media (max-width: 599px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  /* Hide the desktop table on mobile */
+  .items-table-wrap {
+    display: none;
+  }
+
+  /* Show card layout on mobile */
+  .item-card {
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    margin-bottom: 10px;
+    background: var(--bg-primary);
+    position: relative;
+  }
+
+  .item-card-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .item-card-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .item-card-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .item-card-amount {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    align-self: flex-end;
+  }
+
+  .item-card-remove {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+  }
+}
+
+
 /* ── TABLE ── */
 .table-wrap {
   overflow-x: auto;
