@@ -1,58 +1,93 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../db/schema');
+const { client, initDB } = require('../db/schema');
 
 // GET all customers (with optional search)
-router.get('/', (req, res) => {
-  const { search } = req.query;
-  let customers;
-  if (search) {
-    customers = db.prepare(
-      `SELECT * FROM customers WHERE name LIKE ? OR gst_number LIKE ? OR address LIKE ? ORDER BY name ASC`
-    ).all(`%${search}%`, `%${search}%`, `%${search}%`);
-  } else {
-    customers = db.prepare(`SELECT * FROM customers ORDER BY name ASC`).all();
+router.get('/', async (req, res) => {
+  try {
+    await initDB();
+    const { search } = req.query;
+    let result;
+    if (search) {
+      result = await client.execute({
+        sql: `SELECT * FROM customers WHERE name LIKE ? OR gst_number LIKE ? OR address LIKE ? ORDER BY name ASC`,
+        args: [`%${search}%`, `%${search}%`, `%${search}%`]
+      });
+    } else {
+      result = await client.execute(`SELECT * FROM customers ORDER BY name ASC`);
+    }
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  res.json(customers);
 });
 
 // GET single customer
-router.get('/:id', (req, res) => {
-  const customer = db.prepare(`SELECT * FROM customers WHERE id = ?`).get(req.params.id);
-  if (!customer) return res.status(404).json({ error: 'Customer not found' });
-  res.json(customer);
+router.get('/:id', async (req, res) => {
+  try {
+    await initDB();
+    const result = await client.execute({
+      sql: `SELECT * FROM customers WHERE id = ?`,
+      args: [req.params.id]
+    });
+    const customer = result.rows[0];
+    if (!customer) return res.status(404).json({ error: 'Customer not found' });
+    res.json(customer);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST create customer
-router.post('/', (req, res) => {
-  const { name, address, gst_number = '' } = req.body;
-  if (!name || !address) {
-    return res.status(400).json({ error: 'name and address are required' });
+router.post('/', async (req, res) => {
+  try {
+    await initDB();
+    const { name, address, gst_number = '' } = req.body;
+    if (!name || !address) {
+      return res.status(400).json({ error: 'name and address are required' });
+    }
+    const result = await client.execute({
+      sql: `INSERT INTO customers (name, address, gst_number) VALUES (?, ?, ?)`,
+      args: [name.trim(), address.trim(), gst_number.trim().toUpperCase()]
+    });
+    res.status(201).json({ id: Number(result.lastInsertRowid), name, address, gst_number });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  const result = db.prepare(
-    `INSERT INTO customers (name, address, gst_number) VALUES (?, ?, ?)`
-  ).run(name.trim(), address.trim(), gst_number.trim().toUpperCase());
-  res.status(201).json({ id: result.lastInsertRowid, name, address, gst_number });
 });
 
 // PUT update customer
-router.put('/:id', (req, res) => {
-  const { name, address, gst_number = '' } = req.body;
-  if (!name || !address) {
-    return res.status(400).json({ error: 'name and address are required' });
+router.put('/:id', async (req, res) => {
+  try {
+    await initDB();
+    const { name, address, gst_number = '' } = req.body;
+    if (!name || !address) {
+      return res.status(400).json({ error: 'name and address are required' });
+    }
+    const result = await client.execute({
+      sql: `UPDATE customers SET name = ?, address = ?, gst_number = ? WHERE id = ?`,
+      args: [name.trim(), address.trim(), gst_number.trim().toUpperCase(), req.params.id]
+    });
+    if (result.rowsAffected === 0) return res.status(404).json({ error: 'Customer not found' });
+    res.json({ id: parseInt(req.params.id), name, address, gst_number });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  const result = db.prepare(
-    `UPDATE customers SET name = ?, address = ?, gst_number = ? WHERE id = ?`
-  ).run(name.trim(), address.trim(), gst_number.trim().toUpperCase(), req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Customer not found' });
-  res.json({ id: parseInt(req.params.id), name, address, gst_number });
 });
 
 // DELETE customer
-router.delete('/:id', (req, res) => {
-  const result = db.prepare(`DELETE FROM customers WHERE id = ?`).run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Customer not found' });
-  res.json({ message: 'Customer deleted successfully' });
+router.delete('/:id', async (req, res) => {
+  try {
+    await initDB();
+    const result = await client.execute({
+      sql: `DELETE FROM customers WHERE id = ?`,
+      args: [req.params.id]
+    });
+    if (result.rowsAffected === 0) return res.status(404).json({ error: 'Customer not found' });
+    res.json({ message: 'Customer deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

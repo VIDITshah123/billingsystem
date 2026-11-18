@@ -1,128 +1,156 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../db/schema');
+const { client, initDB } = require('../db/schema');
 
 // Helper: round to 2 decimal places
 const r2 = (n) => Math.round(n * 100) / 100;
 
 // GET all invoices with customer info
-router.get('/', (req, res) => {
-  const { from, to } = req.query;
-  let query = `
-    SELECT i.*, c.name as customer_name, c.address as customer_address, c.gst_number as customer_gst
-    FROM invoices i
-    JOIN customers c ON i.customer_id = c.id
-  `;
-  const params = [];
-  if (from && to) {
-    query += ` WHERE i.invoice_date BETWEEN ? AND ?`;
-    params.push(from, to);
-  } else if (from) {
-    query += ` WHERE i.invoice_date >= ?`;
-    params.push(from);
-  } else if (to) {
-    query += ` WHERE i.invoice_date <= ?`;
-    params.push(to);
+router.get('/', async (req, res) => {
+  try {
+    await initDB();
+    const { from, to } = req.query;
+    let query = `
+      SELECT i.*, c.name as customer_name, c.address as customer_address, c.gst_number as customer_gst
+      FROM invoices i
+      JOIN customers c ON i.customer_id = c.id
+    `;
+    const params = [];
+    if (from && to) {
+      query += ` WHERE i.invoice_date BETWEEN ? AND ?`;
+      params.push(from, to);
+    } else if (from) {
+      query += ` WHERE i.invoice_date >= ?`;
+      params.push(from);
+    } else if (to) {
+      query += ` WHERE i.invoice_date <= ?`;
+      params.push(to);
+    }
+    query += ` ORDER BY i.invoice_date DESC, i.id DESC`;
+
+    const result = await client.execute({ sql: query, args: params });
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  query += ` ORDER BY i.invoice_date DESC, i.id DESC`;
-  const invoices = db.prepare(query).all(...params);
-  res.json(invoices);
 });
 
 // GET single invoice with items
-router.get('/:id', (req, res) => {
-  const invoice = db.prepare(`
-    SELECT i.*, c.name as customer_name, c.address as customer_address, c.gst_number as customer_gst
-    FROM invoices i
-    JOIN customers c ON i.customer_id = c.id
-    WHERE i.id = ?
-  `).get(req.params.id);
+router.get('/:id', async (req, res) => {
+  try {
+    await initDB();
+    const invRes = await client.execute({
+      sql: `
+        SELECT i.*, c.name as customer_name, c.address as customer_address, c.gst_number as customer_gst
+        FROM invoices i
+        JOIN customers c ON i.customer_id = c.id
+        WHERE i.id = ?
+      `,
+      args: [req.params.id]
+    });
 
-  if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    const invoice = invRes.rows[0];
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
 
-  const items = db.prepare(`
-    SELECT ii.*, p.name as product_name, p.hsn_code, p.unit
-    FROM invoice_items ii
-    JOIN products p ON ii.product_id = p.id
-    WHERE ii.invoice_id = ?
-  `).all(req.params.id);
+    const itemsRes = await client.execute({
+      sql: `
+        SELECT ii.*, p.name as product_name, p.hsn_code, p.unit
+        FROM invoice_items ii
+        JOIN products p ON ii.product_id = p.id
+        WHERE ii.invoice_id = ?
+      `,
+      args: [req.params.id]
+    });
 
-  res.json({ ...invoice, items });
+    res.json({ ...invoice, items: itemsRes.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST create invoice
-router.post('/', (req, res) => {
-  const {
-    invoice_number, invoice_date, customer_id, tax_type, items,
-    eway_bill_no = '', vehicle_no = '', supply_datetime = '',
-    shipped_to_name = '', shipped_to_address = ''
-  } = req.body;
-
-  if (!invoice_number || !invoice_date || !customer_id || !tax_type || !items || items.length === 0) {
-    return res.status(400).json({ error: 'All fields and at least one item are required' });
-  }
-  if (!['cgst_sgst', 'igst'].includes(tax_type)) {
-    return res.status(400).json({ error: 'tax_type must be cgst_sgst or igst' });
-  }
-
-  for (const item of items) {
-    if (!item.product_id || !item.quantity || !item.rate) {
-      return res.status(400).json({ error: 'Each item needs product_id, quantity, and rate' });
-    }
-  }
-
-  let taxable_value = 0;
-  const processedItems = items.map(item => {
-    const qty = r2(parseFloat(item.quantity));
-    const rate = r2(parseFloat(item.rate));
-    const amount = r2(qty * rate);
-    taxable_value += amount;
-    return { product_id: item.product_id, quantity: qty, rate, amount };
-  });
-  taxable_value = r2(taxable_value);
-
-  let cgst = 0, sgst = 0, igst = 0;
-  if (tax_type === 'cgst_sgst') {
-    cgst = r2(taxable_value * 0.025);
-    sgst = r2(taxable_value * 0.025);
-  } else {
-    igst = r2(taxable_value * 0.05);
-  }
-
-  const subtotal = r2(taxable_value + cgst + sgst + igst);
-  const decimal = subtotal - Math.floor(subtotal);
-  const roundoff = decimal >= 0.5 ? r2(1 - decimal) : r2(-decimal);
-  const total = r2(subtotal + roundoff);
-
-  const insertInvoice = db.transaction(() => {
-    const inv = db.prepare(`
-      INSERT INTO invoices
-        (invoice_number, invoice_date, customer_id, tax_type,
-         taxable_value, cgst, sgst, igst, roundoff, total,
-         eway_bill_no, vehicle_no, supply_datetime, shipped_to_name, shipped_to_address)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      invoice_number, invoice_date, customer_id, tax_type,
-      taxable_value, cgst, sgst, igst, roundoff, total,
-      eway_bill_no, vehicle_no, supply_datetime, shipped_to_name, shipped_to_address
-    );
-
-    const invoiceId = inv.lastInsertRowid;
-    const insertItem = db.prepare(`
-      INSERT INTO invoice_items (invoice_id, product_id, quantity, rate, amount)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    for (const item of processedItems) {
-      insertItem.run(invoiceId, item.product_id, item.quantity, item.rate, item.amount);
-    }
-    return invoiceId;
-  });
-
+router.post('/', async (req, res) => {
   try {
-    const invoiceId = insertInvoice();
-    res.status(201).json({ id: invoiceId, invoice_number, total });
+    await initDB();
+    const {
+      invoice_number, invoice_date, customer_id, tax_type, items,
+      eway_bill_no = '', vehicle_no = '', supply_datetime = '',
+      shipped_to_name = '', shipped_to_address = ''
+    } = req.body;
+
+    if (!invoice_number || !invoice_date || !customer_id || !tax_type || !items || items.length === 0) {
+      return res.status(400).json({ error: 'All fields and at least one item are required' });
+    }
+    if (!['cgst_sgst', 'igst'].includes(tax_type)) {
+      return res.status(400).json({ error: 'tax_type must be cgst_sgst or igst' });
+    }
+
+    for (const item of items) {
+      if (!item.product_id || !item.quantity || !item.rate) {
+        return res.status(400).json({ error: 'Each item needs product_id, quantity, and rate' });
+      }
+    }
+
+    let taxable_value = 0;
+    const processedItems = items.map(item => {
+      const qty = r2(parseFloat(item.quantity));
+      const rate = r2(parseFloat(item.rate));
+      const amount = r2(qty * rate);
+      taxable_value += amount;
+      return { product_id: item.product_id, quantity: qty, rate, amount };
+    });
+    taxable_value = r2(taxable_value);
+
+    let cgst = 0, sgst = 0, igst = 0;
+    if (tax_type === 'cgst_sgst') {
+      cgst = r2(taxable_value * 0.025);
+      sgst = r2(taxable_value * 0.025);
+    } else {
+      igst = r2(taxable_value * 0.05);
+    }
+
+    const subtotal = r2(taxable_value + cgst + sgst + igst);
+    const decimal = subtotal - Math.floor(subtotal);
+    const roundoff = decimal >= 0.5 ? r2(1 - decimal) : r2(-decimal);
+    const total = r2(subtotal + roundoff);
+
+    const tx = await client.transaction('write');
+    try {
+      const invRes = await tx.execute({
+        sql: `
+          INSERT INTO invoices
+            (invoice_number, invoice_date, customer_id, tax_type,
+             taxable_value, cgst, sgst, igst, roundoff, total,
+             eway_bill_no, vehicle_no, supply_datetime, shipped_to_name, shipped_to_address)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        args: [
+          invoice_number, invoice_date, customer_id, tax_type,
+          taxable_value, cgst, sgst, igst, roundoff, total,
+          eway_bill_no, vehicle_no, supply_datetime, shipped_to_name, shipped_to_address
+        ]
+      });
+
+      const invoiceId = Number(invRes.lastInsertRowid);
+
+      for (const item of processedItems) {
+        await tx.execute({
+          sql: `
+            INSERT INTO invoice_items (invoice_id, product_id, quantity, rate, amount)
+            VALUES (?, ?, ?, ?, ?)
+          `,
+          args: [invoiceId, item.product_id, item.quantity, item.rate, item.amount]
+        });
+      }
+
+      await tx.commit();
+      res.status(201).json({ id: invoiceId, invoice_number, total });
+    } catch (txErr) {
+      await tx.rollback();
+      throw txErr;
+    }
   } catch (err) {
-    if (err.message.includes('UNIQUE')) {
+    if (err.message && err.message.includes('UNIQUE')) {
       return res.status(400).json({ error: 'Invoice number already exists' });
     }
     res.status(500).json({ error: err.message });
@@ -130,86 +158,101 @@ router.post('/', (req, res) => {
 });
 
 // PUT update invoice
-router.put('/:id', (req, res) => {
-  const {
-    invoice_number, invoice_date, customer_id, tax_type, items,
-    eway_bill_no = '', vehicle_no = '', supply_datetime = '',
-    shipped_to_name = '', shipped_to_address = ''
-  } = req.body;
-  const invoiceId = req.params.id;
-
-  if (!invoice_number || !invoice_date || !customer_id || !tax_type || !items || items.length === 0) {
-    return res.status(400).json({ error: 'All fields and at least one item are required' });
-  }
-  if (!['cgst_sgst', 'igst'].includes(tax_type)) {
-    return res.status(400).json({ error: 'tax_type must be cgst_sgst or igst' });
-  }
-
-  for (const item of items) {
-    if (!item.product_id || !item.quantity || !item.rate) {
-      return res.status(400).json({ error: 'Each item needs product_id, quantity, and rate' });
-    }
-  }
-
-  let taxable_value = 0;
-  const processedItems = items.map(item => {
-    const qty = r2(parseFloat(item.quantity));
-    const rate = r2(parseFloat(item.rate));
-    const amount = r2(qty * rate);
-    taxable_value += amount;
-    return { product_id: item.product_id, quantity: qty, rate, amount };
-  });
-  taxable_value = r2(taxable_value);
-
-  let cgst = 0, sgst = 0, igst = 0;
-  if (tax_type === 'cgst_sgst') {
-    cgst = r2(taxable_value * 0.025);
-    sgst = r2(taxable_value * 0.025);
-  } else {
-    igst = r2(taxable_value * 0.05);
-  }
-
-  const subtotal = r2(taxable_value + cgst + sgst + igst);
-  const decimal = subtotal - Math.floor(subtotal);
-  const roundoff = decimal >= 0.5 ? r2(1 - decimal) : r2(-decimal);
-  const total = r2(subtotal + roundoff);
-
-  const updateInvoiceTransaction = db.transaction(() => {
-    db.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(invoiceId);
-
-    const result = db.prepare(`
-      UPDATE invoices
-      SET invoice_number = ?, invoice_date = ?, customer_id = ?, tax_type = ?,
-          taxable_value = ?, cgst = ?, sgst = ?, igst = ?, roundoff = ?, total = ?,
-          eway_bill_no = ?, vehicle_no = ?, supply_datetime = ?,
-          shipped_to_name = ?, shipped_to_address = ?
-      WHERE id = ?
-    `).run(
-      invoice_number, invoice_date, customer_id, tax_type,
-      taxable_value, cgst, sgst, igst, roundoff, total,
-      eway_bill_no, vehicle_no, supply_datetime, shipped_to_name, shipped_to_address,
-      invoiceId
-    );
-
-    if (result.changes === 0) throw new Error('Invoice not found');
-
-    const insertItem = db.prepare(`
-      INSERT INTO invoice_items (invoice_id, product_id, quantity, rate, amount)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    for (const item of processedItems) {
-      insertItem.run(invoiceId, item.product_id, item.quantity, item.rate, item.amount);
-    }
-  });
-
+router.put('/:id', async (req, res) => {
   try {
-    updateInvoiceTransaction();
-    res.json({ id: invoiceId, invoice_number, total });
+    await initDB();
+    const {
+      invoice_number, invoice_date, customer_id, tax_type, items,
+      eway_bill_no = '', vehicle_no = '', supply_datetime = '',
+      shipped_to_name = '', shipped_to_address = ''
+    } = req.body;
+    const invoiceId = req.params.id;
+
+    if (!invoice_number || !invoice_date || !customer_id || !tax_type || !items || items.length === 0) {
+      return res.status(400).json({ error: 'All fields and at least one item are required' });
+    }
+    if (!['cgst_sgst', 'igst'].includes(tax_type)) {
+      return res.status(400).json({ error: 'tax_type must be cgst_sgst or igst' });
+    }
+
+    for (const item of items) {
+      if (!item.product_id || !item.quantity || !item.rate) {
+        return res.status(400).json({ error: 'Each item needs product_id, quantity, and rate' });
+      }
+    }
+
+    let taxable_value = 0;
+    const processedItems = items.map(item => {
+      const qty = r2(parseFloat(item.quantity));
+      const rate = r2(parseFloat(item.rate));
+      const amount = r2(qty * rate);
+      taxable_value += amount;
+      return { product_id: item.product_id, quantity: qty, rate, amount };
+    });
+    taxable_value = r2(taxable_value);
+
+    let cgst = 0, sgst = 0, igst = 0;
+    if (tax_type === 'cgst_sgst') {
+      cgst = r2(taxable_value * 0.025);
+      sgst = r2(taxable_value * 0.025);
+    } else {
+      igst = r2(taxable_value * 0.05);
+    }
+
+    const subtotal = r2(taxable_value + cgst + sgst + igst);
+    const decimal = subtotal - Math.floor(subtotal);
+    const roundoff = decimal >= 0.5 ? r2(1 - decimal) : r2(-decimal);
+    const total = r2(subtotal + roundoff);
+
+    const tx = await client.transaction('write');
+    try {
+      await tx.execute({
+        sql: `DELETE FROM invoice_items WHERE invoice_id = ?`,
+        args: [invoiceId]
+      });
+
+      const updateRes = await tx.execute({
+        sql: `
+          UPDATE invoices
+          SET invoice_number = ?, invoice_date = ?, customer_id = ?, tax_type = ?,
+              taxable_value = ?, cgst = ?, sgst = ?, igst = ?, roundoff = ?, total = ?,
+              eway_bill_no = ?, vehicle_no = ?, supply_datetime = ?,
+              shipped_to_name = ?, shipped_to_address = ?
+          WHERE id = ?
+        `,
+        args: [
+          invoice_number, invoice_date, customer_id, tax_type,
+          taxable_value, cgst, sgst, igst, roundoff, total,
+          eway_bill_no, vehicle_no, supply_datetime, shipped_to_name, shipped_to_address,
+          invoiceId
+        ]
+      });
+
+      if (updateRes.rowsAffected === 0) {
+        throw new Error('Invoice not found');
+      }
+
+      for (const item of processedItems) {
+        await tx.execute({
+          sql: `
+            INSERT INTO invoice_items (invoice_id, product_id, quantity, rate, amount)
+            VALUES (?, ?, ?, ?, ?)
+          `,
+          args: [invoiceId, item.product_id, item.quantity, item.rate, item.amount]
+        });
+      }
+
+      await tx.commit();
+      res.json({ id: invoiceId, invoice_number, total });
+    } catch (txErr) {
+      await tx.rollback();
+      throw txErr;
+    }
   } catch (err) {
     if (err.message === 'Invoice not found') {
       return res.status(404).json({ error: 'Invoice not found' });
     }
-    if (err.message.includes('UNIQUE')) {
+    if (err.message && err.message.includes('UNIQUE')) {
       return res.status(400).json({ error: 'Invoice number already exists' });
     }
     res.status(500).json({ error: err.message });
@@ -217,10 +260,18 @@ router.put('/:id', (req, res) => {
 });
 
 // DELETE invoice
-router.delete('/:id', (req, res) => {
-  const result = db.prepare(`DELETE FROM invoices WHERE id = ?`).run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Invoice not found' });
-  res.json({ message: 'Invoice deleted' });
+router.delete('/:id', async (req, res) => {
+  try {
+    await initDB();
+    const result = await client.execute({
+      sql: `DELETE FROM invoices WHERE id = ?`,
+      args: [req.params.id]
+    });
+    if (result.rowsAffected === 0) return res.status(404).json({ error: 'Invoice not found' });
+    res.json({ message: 'Invoice deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
