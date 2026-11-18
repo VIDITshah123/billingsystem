@@ -1,22 +1,34 @@
-const { createClient } = require('@libsql/client');
-const path = require('path');
+const { createClient } = require('@libsql/client/web');
 
-const url = process.env.TURSO_DATABASE_URL || `file:${path.join(__dirname, '..', 'billing.db')}`;
-const authToken = process.env.TURSO_AUTH_TOKEN;
-
-const client = createClient({
-  url,
-  authToken,
-});
-
+let client = null;
 let initPromise = null;
+
+function getClient() {
+  if (client) return client;
+
+  const url = process.env.TURSO_DATABASE_URL;
+  const authToken = process.env.TURSO_AUTH_TOKEN;
+
+  if (!url) {
+    throw new Error('TURSO_DATABASE_URL is not set in Environment Variables. Please set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN.');
+  }
+
+  client = createClient({
+    url,
+    authToken,
+  });
+
+  return client;
+}
 
 async function initDB() {
   if (initPromise) return initPromise;
 
+  const dbClient = getClient();
+
   initPromise = (async () => {
-    // Create tables
-    await client.executeMultiple(`
+    // Create tables in Turso
+    await dbClient.executeMultiple(`
       CREATE TABLE IF NOT EXISTS customers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -76,17 +88,15 @@ async function initDB() {
     ];
     for (const col of newCols) {
       try {
-        await client.execute(col);
+        await dbClient.execute(col);
       } catch (_) {
         // column already exists
       }
     }
+    return dbClient;
   })();
 
   return initPromise;
 }
 
-// Auto initialize
-initDB().catch(console.error);
-
-module.exports = { client, initDB };
+module.exports = { getClient, initDB };

@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
-const { client, initDB } = require('./db/schema');
+const { initDB } = require('./db/schema');
 
 const app = express();
 
@@ -20,7 +20,7 @@ apiRouter.use('/auth', require('./routes/auth'));
 // Detailed report endpoint
 apiRouter.get('/reports/items', async (req, res) => {
   try {
-    await initDB();
+    const db = await initDB();
     const { from, to } = req.query;
     let where = '';
     const params = [];
@@ -35,7 +35,7 @@ apiRouter.get('/reports/items', async (req, res) => {
       params.push(to);
     }
 
-    const result = await client.execute({
+    const result = await db.execute({
       sql: `
         SELECT
           i.invoice_number, i.invoice_date, i.tax_type,
@@ -61,7 +61,8 @@ apiRouter.get('/reports/items', async (req, res) => {
 
 apiRouter.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-// Mount on both '/api' and '/' to handle all Netlify redirect / direct URL structures
+// Mount on all possible Netlify / direct routes
+app.use('/.netlify/functions/api', apiRouter);
 app.use('/api', apiRouter);
 app.use('/', apiRouter);
 

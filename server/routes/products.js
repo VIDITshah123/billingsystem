@@ -1,20 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const { client, initDB } = require('../db/schema');
+const { initDB } = require('../db/schema');
 
 // GET all products (with optional search)
 router.get('/', async (req, res) => {
   try {
-    await initDB();
+    const db = await initDB();
     const { search } = req.query;
     let result;
     if (search) {
-      result = await client.execute({
+      result = await db.execute({
         sql: `SELECT * FROM products WHERE name LIKE ? OR hsn_code LIKE ? ORDER BY name ASC`,
         args: [`%${search}%`, `%${search}%`]
       });
     } else {
-      result = await client.execute(`SELECT * FROM products ORDER BY name ASC`);
+      result = await db.execute(`SELECT * FROM products ORDER BY name ASC`);
     }
     res.json(result.rows);
   } catch (err) {
@@ -25,8 +25,8 @@ router.get('/', async (req, res) => {
 // GET single product
 router.get('/:id', async (req, res) => {
   try {
-    await initDB();
-    const result = await client.execute({
+    const db = await initDB();
+    const result = await db.execute({
       sql: `SELECT * FROM products WHERE id = ?`,
       args: [req.params.id]
     });
@@ -41,7 +41,7 @@ router.get('/:id', async (req, res) => {
 // POST create product
 router.post('/', async (req, res) => {
   try {
-    await initDB();
+    const db = await initDB();
     const { name, hsn_code, unit } = req.body;
     if (!name || !hsn_code || !unit) {
       return res.status(400).json({ error: 'name, hsn_code, and unit are required' });
@@ -49,7 +49,7 @@ router.post('/', async (req, res) => {
     if (!['kgs', 'units'].includes(unit)) {
       return res.status(400).json({ error: 'unit must be kgs or units' });
     }
-    const result = await client.execute({
+    const result = await db.execute({
       sql: `INSERT INTO products (name, hsn_code, unit) VALUES (?, ?, ?)`,
       args: [name.trim(), hsn_code.trim(), unit]
     });
@@ -62,7 +62,7 @@ router.post('/', async (req, res) => {
 // PUT update product
 router.put('/:id', async (req, res) => {
   try {
-    await initDB();
+    const db = await initDB();
     const { name, hsn_code, unit } = req.body;
     if (!name || !hsn_code || !unit) {
       return res.status(400).json({ error: 'name, hsn_code, and unit are required' });
@@ -70,7 +70,7 @@ router.put('/:id', async (req, res) => {
     if (!['kgs', 'units'].includes(unit)) {
       return res.status(400).json({ error: 'unit must be kgs or units' });
     }
-    const result = await client.execute({
+    const result = await db.execute({
       sql: `UPDATE products SET name = ?, hsn_code = ?, unit = ? WHERE id = ?`,
       args: [name.trim(), hsn_code.trim(), unit, req.params.id]
     });
@@ -84,8 +84,8 @@ router.put('/:id', async (req, res) => {
 // DELETE product
 router.delete('/:id', async (req, res) => {
   try {
-    await initDB();
-    const result = await client.execute({
+    const db = await initDB();
+    const result = await db.execute({
       sql: `DELETE FROM products WHERE id = ?`,
       args: [req.params.id]
     });

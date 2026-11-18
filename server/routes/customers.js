@@ -1,20 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const { client, initDB } = require('../db/schema');
+const { initDB } = require('../db/schema');
 
 // GET all customers (with optional search)
 router.get('/', async (req, res) => {
   try {
-    await initDB();
+    const db = await initDB();
     const { search } = req.query;
     let result;
     if (search) {
-      result = await client.execute({
+      result = await db.execute({
         sql: `SELECT * FROM customers WHERE name LIKE ? OR gst_number LIKE ? OR address LIKE ? ORDER BY name ASC`,
         args: [`%${search}%`, `%${search}%`, `%${search}%`]
       });
     } else {
-      result = await client.execute(`SELECT * FROM customers ORDER BY name ASC`);
+      result = await db.execute(`SELECT * FROM customers ORDER BY name ASC`);
     }
     res.json(result.rows);
   } catch (err) {
@@ -25,8 +25,8 @@ router.get('/', async (req, res) => {
 // GET single customer
 router.get('/:id', async (req, res) => {
   try {
-    await initDB();
-    const result = await client.execute({
+    const db = await initDB();
+    const result = await db.execute({
       sql: `SELECT * FROM customers WHERE id = ?`,
       args: [req.params.id]
     });
@@ -41,12 +41,12 @@ router.get('/:id', async (req, res) => {
 // POST create customer
 router.post('/', async (req, res) => {
   try {
-    await initDB();
+    const db = await initDB();
     const { name, address, gst_number = '' } = req.body;
     if (!name || !address) {
       return res.status(400).json({ error: 'name and address are required' });
     }
-    const result = await client.execute({
+    const result = await db.execute({
       sql: `INSERT INTO customers (name, address, gst_number) VALUES (?, ?, ?)`,
       args: [name.trim(), address.trim(), gst_number.trim().toUpperCase()]
     });
@@ -59,12 +59,12 @@ router.post('/', async (req, res) => {
 // PUT update customer
 router.put('/:id', async (req, res) => {
   try {
-    await initDB();
+    const db = await initDB();
     const { name, address, gst_number = '' } = req.body;
     if (!name || !address) {
       return res.status(400).json({ error: 'name and address are required' });
     }
-    const result = await client.execute({
+    const result = await db.execute({
       sql: `UPDATE customers SET name = ?, address = ?, gst_number = ? WHERE id = ?`,
       args: [name.trim(), address.trim(), gst_number.trim().toUpperCase(), req.params.id]
     });
@@ -78,8 +78,8 @@ router.put('/:id', async (req, res) => {
 // DELETE customer
 router.delete('/:id', async (req, res) => {
   try {
-    await initDB();
-    const result = await client.execute({
+    const db = await initDB();
+    const result = await db.execute({
       sql: `DELETE FROM customers WHERE id = ?`,
       args: [req.params.id]
     });

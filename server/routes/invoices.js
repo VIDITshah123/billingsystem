@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { client, initDB } = require('../db/schema');
+const { initDB } = require('../db/schema');
 
 // Helper: round to 2 decimal places
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -8,7 +8,7 @@ const r2 = (n) => Math.round(n * 100) / 100;
 // GET all invoices with customer info
 router.get('/', async (req, res) => {
   try {
-    await initDB();
+    const db = await initDB();
     const { from, to } = req.query;
     let query = `
       SELECT i.*, c.name as customer_name, c.address as customer_address, c.gst_number as customer_gst
@@ -28,7 +28,7 @@ router.get('/', async (req, res) => {
     }
     query += ` ORDER BY i.invoice_date DESC, i.id DESC`;
 
-    const result = await client.execute({ sql: query, args: params });
+    const result = await db.execute({ sql: query, args: params });
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -38,8 +38,8 @@ router.get('/', async (req, res) => {
 // GET single invoice with items
 router.get('/:id', async (req, res) => {
   try {
-    await initDB();
-    const invRes = await client.execute({
+    const db = await initDB();
+    const invRes = await db.execute({
       sql: `
         SELECT i.*, c.name as customer_name, c.address as customer_address, c.gst_number as customer_gst
         FROM invoices i
@@ -52,7 +52,7 @@ router.get('/:id', async (req, res) => {
     const invoice = invRes.rows[0];
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
 
-    const itemsRes = await client.execute({
+    const itemsRes = await db.execute({
       sql: `
         SELECT ii.*, p.name as product_name, p.hsn_code, p.unit
         FROM invoice_items ii
@@ -71,7 +71,7 @@ router.get('/:id', async (req, res) => {
 // POST create invoice
 router.post('/', async (req, res) => {
   try {
-    await initDB();
+    const db = await initDB();
     const {
       invoice_number, invoice_date, customer_id, tax_type, items,
       eway_bill_no = '', vehicle_no = '', supply_datetime = '',
@@ -114,7 +114,7 @@ router.post('/', async (req, res) => {
     const roundoff = decimal >= 0.5 ? r2(1 - decimal) : r2(-decimal);
     const total = r2(subtotal + roundoff);
 
-    const tx = await client.transaction('write');
+    const tx = await db.transaction('write');
     try {
       const invRes = await tx.execute({
         sql: `
@@ -160,7 +160,7 @@ router.post('/', async (req, res) => {
 // PUT update invoice
 router.put('/:id', async (req, res) => {
   try {
-    await initDB();
+    const db = await initDB();
     const {
       invoice_number, invoice_date, customer_id, tax_type, items,
       eway_bill_no = '', vehicle_no = '', supply_datetime = '',
@@ -204,7 +204,7 @@ router.put('/:id', async (req, res) => {
     const roundoff = decimal >= 0.5 ? r2(1 - decimal) : r2(-decimal);
     const total = r2(subtotal + roundoff);
 
-    const tx = await client.transaction('write');
+    const tx = await db.transaction('write');
     try {
       await tx.execute({
         sql: `DELETE FROM invoice_items WHERE invoice_id = ?`,
@@ -262,8 +262,8 @@ router.put('/:id', async (req, res) => {
 // DELETE invoice
 router.delete('/:id', async (req, res) => {
   try {
-    await initDB();
-    const result = await client.execute({
+    const db = await initDB();
+    const result = await db.execute({
       sql: `DELETE FROM invoices WHERE id = ?`,
       args: [req.params.id]
     });
